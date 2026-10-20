@@ -77,6 +77,7 @@ class MyApp extends StatelessWidget {
           locale: context.locale,
           routes: {
             '/login': (context) => const DriverLoginPage(),
+            '/role-selection': (context) => const DriverLoginPage(),
             '/register': (context) => const DriverRegisterPage(),
             '/settings': (context) => const SettingsScreen(),
             '/home': (context) => const MainNavigationScreen(),
@@ -300,3 +301,4 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 }
+
