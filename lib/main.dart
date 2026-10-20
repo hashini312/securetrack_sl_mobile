@@ -6,14 +6,16 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:securetrack_sl/owner/app_settings.dart';
+import 'package:securetrack_sl/owner/components.dart';
 import 'package:securetrack_sl/owner/firebase_service.dart' as owner_fs;
-import 'package:securetrack_sl/owner/session_manager.dart' as owner_sm;
+import 'package:securetrack_sl/owner/models.dart';
 import 'package:securetrack_sl/owner/screens.dart' as owner_screens;
+import 'package:securetrack_sl/owner/session_manager.dart' as owner_sm;
+import 'package:securetrack_sl/owner/settings_screen.dart' as owner_settings;
 import 'package:securetrack_sl/owner/main.dart' as owner_main;
 
 import 'package:securetrack_sl/driver/firebase_options.dart';
 import 'package:securetrack_sl/driver/driver_login_page.dart';
-import 'package:securetrack_sl/driver/services/session_service.dart';
 import 'package:securetrack_sl/driver/services/shipment_service.dart';
 import 'package:securetrack_sl/driver/main.dart' as driver_app;
 
@@ -52,13 +54,13 @@ void main() async {
       ],
       path: 'assets/translations',
       fallbackLocale: const Locale('en'),
-      child: const SecureTrackUnifiedApp(),
+      child: const SecureTrackApp(),
     ),
   );
 }
 
-class SecureTrackUnifiedApp extends StatelessWidget {
-  const SecureTrackUnifiedApp({super.key});
+class SecureTrackApp extends StatelessWidget {
+  const SecureTrackApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -74,34 +76,36 @@ class SecureTrackUnifiedApp extends StatelessWidget {
           supportedLocales: context.supportedLocales,
           locale: context.locale,
           themeMode: settings.themeMode,
+          // Exact Light Theme from original Owner App
           theme: ThemeData(
             useMaterial3: true,
             brightness: Brightness.light,
-            scaffoldBackgroundColor: const Color(0xFFF8FAFC),
-            primaryColor: const Color(0xFF1E3A8A),
+            scaffoldBackgroundColor: AppColors.background,
+            primaryColor: AppColors.primaryBlue,
             colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFF1E3A8A),
-              primary: const Color(0xFF1E3A8A),
-              secondary: const Color(0xFF0284C7),
+              seedColor: AppColors.primaryBlue,
+              primary: AppColors.primaryBlue,
+              secondary: AppColors.accentBlue,
               surface: Colors.white,
               brightness: Brightness.light,
             ),
             textTheme: GoogleFonts.poppinsTextTheme(ThemeData.light().textTheme),
             appBarTheme: const AppBarTheme(
               backgroundColor: Colors.white,
-              foregroundColor: Color(0xFF0F172A),
+              foregroundColor: AppColors.textDark,
               elevation: 0,
             ),
           ),
+          // Exact Dark Theme from original Owner App
           darkTheme: ThemeData(
             useMaterial3: true,
             brightness: Brightness.dark,
             scaffoldBackgroundColor: const Color(0xFF0F172A),
-            primaryColor: const Color(0xFF3B82F6),
+            primaryColor: AppColors.accentBlue,
             colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFF3B82F6),
-              primary: const Color(0xFF3B82F6),
-              secondary: const Color(0xFF38BDF8),
+              seedColor: AppColors.primaryBlue,
+              primary: AppColors.accentBlue,
+              secondary: const Color(0xFF60A5FA),
               surface: const Color(0xFF1E293B),
               brightness: Brightness.dark,
             ),
@@ -112,234 +116,41 @@ class SecureTrackUnifiedApp extends StatelessWidget {
               elevation: 0,
             ),
           ),
-          home: const UnifiedRoleSelectorScreen(),
+          initialRoute: '/',
+          onGenerateRoute: (routeSettings) {
+            switch (routeSettings.name) {
+              case '/':
+                return MaterialPageRoute(builder: (_) => const owner_screens.SplashScreen());
+              case '/role-selection':
+                return MaterialPageRoute(builder: (_) => const owner_screens.RoleSelectionScreen());
+              case '/login':
+                final roleArg = routeSettings.arguments as String? ?? 'Owner';
+                if (roleArg.toLowerCase() == 'driver') {
+                  return MaterialPageRoute(builder: (_) => const DriverLoginPage());
+                }
+                return MaterialPageRoute(builder: (_) => const owner_screens.LoginScreen());
+              case '/driver-login':
+                return MaterialPageRoute(builder: (_) => const DriverLoginPage());
+              case '/driver-home':
+                return MaterialPageRoute(builder: (_) => const driver_app.MainNavigationScreen());
+              case '/register':
+                return MaterialPageRoute(builder: (_) => const owner_screens.RegisterScreen());
+              case '/home':
+                return MaterialPageRoute(builder: (_) => const owner_main.MainShell());
+              case '/container-details':
+                final container = routeSettings.arguments as ContainerModel? ?? ContainerModel.sampleContainers.first;
+                return MaterialPageRoute(builder: (_) => owner_screens.ContainerDetailsScreen(container: container));
+              case '/live-tracking':
+                final container = routeSettings.arguments as ContainerModel?;
+                return MaterialPageRoute(builder: (_) => owner_screens.LiveTrackingScreen(container: container));
+              case '/settings':
+                return MaterialPageRoute(builder: (_) => const owner_settings.SettingsScreen());
+              default:
+                return MaterialPageRoute(builder: (_) => const owner_screens.SplashScreen());
+            }
+          },
         );
       },
-    );
-  }
-}
-
-/// Unified Role Selector Landing Page
-class UnifiedRoleSelectorScreen extends StatelessWidget {
-  const UnifiedRoleSelectorScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const SizedBox(height: 24),
-
-              // Emblem / Logo
-              Container(
-                width: 110,
-                height: 110,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white,
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF1E3A8A).withValues(alpha: 0.15),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                padding: const EdgeInsets.all(8),
-                child: Image.asset(
-                  'assets/images/logo.png',
-                  fit: BoxFit.contain,
-                  errorBuilder: (ctx, err, stack) => const Icon(
-                    Icons.security_rounded,
-                    size: 64,
-                    color: Color(0xFF1E3A8A),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 28),
-
-              const Text(
-                'SecureTrack SL',
-                style: TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF0F172A),
-                  letterSpacing: -0.5,
-                ),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'Sri Lanka Customs Container Transit Monitoring',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Color(0xFF64748B),
-                ),
-              ),
-
-              const SizedBox(height: 40),
-
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Select Portal to Continue',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF334155),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Portal Card 1: Container Owner
-              _buildPortalCard(
-                context: context,
-                title: 'Container Owner Portal',
-                subtitle: 'Track live containers, view analytics & security status',
-                icon: Icons.corporate_fare_rounded,
-                accentColor: const Color(0xFF1E3A8A),
-                onTap: () {
-                  final sm = owner_sm.SessionManager.instance;
-                  final cachedSession = sm.getCachedValidSession();
-                  if (cachedSession != null) {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const owner_main.MainShell(),
-                      ),
-                    );
-                  } else {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const owner_screens.LoginScreen(),
-                      ),
-                    );
-                  }
-                },
-              ),
-
-              const SizedBox(height: 16),
-
-              // Portal Card 2: Truck Driver
-              _buildPortalCard(
-                context: context,
-                title: 'Truck Driver Portal',
-                subtitle: 'View assigned shipments, GPS corridor routes & alerts',
-                icon: Icons.local_shipping_rounded,
-                accentColor: const Color(0xFF0284C7),
-                onTap: () async {
-                  final isValid = await SessionService.isSessionValid();
-                  if (context.mounted) {
-                    if (isValid) {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const driver_app.MainNavigationScreen(),
-                        ),
-                      );
-                    } else {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const DriverLoginPage(),
-                        ),
-                      );
-                    }
-                  }
-                },
-              ),
-
-              const SizedBox(height: 48),
-
-              Text(
-                'Sri Lanka Customs • Secure Transit Command',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.grey.shade400,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPortalCard({
-    required BuildContext context,
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required Color accentColor,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: accentColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(icon, color: accentColor, size: 28),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF64748B),
-                      height: 1.3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(
-              Icons.arrow_forward_ios_rounded,
-              size: 16,
-              color: Color(0xFF94A3B8),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

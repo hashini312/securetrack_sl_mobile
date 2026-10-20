@@ -4,6 +4,6 @@ import 'package:securetrack_sl/main.dart';
 void main() {
   testWidgets('Unified app launch test', (WidgetTester tester) async {
     // Basic verification test
-    expect(find.byType(SecureTrackUnifiedApp), findsNothing);
+    expect(find.byType(SecureTrackApp), findsNothing);
   });
 }
