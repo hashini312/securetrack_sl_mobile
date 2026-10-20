@@ -68,8 +68,7 @@ class SessionService {
           behavior: SnackBarBehavior.floating,
         ),
       );
-      Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
-        '/login',
+      Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil('/role-selection',
         (route) => false,
       );
     }
@@ -96,3 +95,4 @@ class SessionService {
     _sessionTimer = null;
   }
 }
+

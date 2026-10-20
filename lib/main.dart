@@ -131,6 +131,7 @@ class SecureTrackApp extends StatelessWidget {
                 return MaterialPageRoute(builder: (_) => const owner_screens.LoginScreen());
               case '/driver-login':
                 return MaterialPageRoute(builder: (_) => const DriverLoginPage());
+              case '/home_screen':
               case '/driver-home':
                 return MaterialPageRoute(builder: (_) => const driver_app.MainNavigationScreen());
               case '/register':
