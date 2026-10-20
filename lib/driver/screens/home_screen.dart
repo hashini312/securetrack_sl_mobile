@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+import 'package:securetrack_sl/owner/components.dart';
+import 'package:securetrack_sl/driver/models/shipment_model.dart';
 import 'package:securetrack_sl/driver/screens/container_details_screen.dart';
 import 'package:securetrack_sl/driver/screens/shipments_screen.dart';
 import 'package:securetrack_sl/driver/services/shipment_service.dart';
 import 'package:securetrack_sl/driver/services/firebase_service.dart';
-import 'package:securetrack_sl/driver/models/shipment_model.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:securetrack_sl/driver/driver_sos_dialog.dart';
 
 class HomeScreen extends StatelessWidget {
   final Function(int) onNavigate;
@@ -20,8 +22,7 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return StreamBuilder<DocumentSnapshot>(
       stream: currentUser != null
@@ -36,7 +37,6 @@ class HomeScreen extends StatelessWidget {
 
         if (snapshot.hasData && snapshot.data != null && snapshot.data!.exists) {
           final userData = snapshot.data!.data() as Map<String, dynamic>?;
-
           if (userData != null) {
             userName = userData['fullName'] ?? userData['fullname'] ?? FirebaseService.defaultDriverName;
             vehicleNo = userData['vehicleNo'] ?? FirebaseService.defaultVehicleNo;
@@ -44,217 +44,398 @@ class HomeScreen extends StatelessWidget {
         }
 
         return SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 20.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'hello'.tr(),
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        userName,
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: isDark ? Colors.white : const Color(0xFF1E3A8A),
-                        ),
-                      ),
-                    ],
+              // Driver Profile Banner Card matching Owner App UI
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [AppColors.primaryBlue, AppColors.accentBlue],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
-                  
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E293B) : Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: isDark ? Colors.blue.shade700 : const Color(0xFF1E3A8A).withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primaryBlue.withValues(alpha: 0.25),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.person, color: Colors.white, size: 30),
                       ),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.directions_car,
-                          size: 16,
-                          color: isDark ? Colors.blue.shade300 : const Color(0xFF1E3A8A),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          vehicleNo,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? Colors.white : const Color(0xFF1E3A8A),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Authorized Haulier',
+                            style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              color: Colors.white70,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
+                          Text(
+                            userName,
+                            style: GoogleFonts.poppins(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              const Icon(Icons.local_shipping, size: 14, color: AppColors.skyBlue),
+                              const SizedBox(width: 4),
+                              Text(
+                                vehicleNo,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12,
+                                  color: AppColors.skyBlue,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    // SOS Emergency Button in Header
+                    InkWell(
+                      onTap: () {
+                        showDialog(
+                          context: context,
+                          builder: (_) => DriverSosDialog(
+                            containerId: 'Active Container',
+                            vehicleNo: vehicleNo,
+                          ),
+                        );
+                      },
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: AppColors.dangerRed,
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.2),
+                              blurRadius: 6,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
                         ),
-                      ],
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.emergency_rounded, color: Colors.white, size: 18),
+                            const SizedBox(width: 4),
+                            Text(
+                              'SOS',
+                              style: GoogleFonts.poppins(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Section Header: Active Assigned Transit
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Active Consignment',
+                    style: GoogleFonts.poppins(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : AppColors.textDark,
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ShipmentsScreen(onNavigateTab: onNavigate),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.history, size: 16, color: AppColors.accentBlue),
+                    label: Text(
+                      'All Cargo',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.accentBlue,
+                      ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
 
-              // Assigned Container Card
+              const SizedBox(height: 8),
+
+              // Active Shipment Card matching Owner Container Card UI
               StreamBuilder<List<ShipmentModel>>(
                 stream: ShipmentService.streamShipments(statusFilter: 'Active'),
                 builder: (context, shipmentSnapshot) {
                   final activeShipments = shipmentSnapshot.data ?? [];
 
                   if (activeShipments.isEmpty) {
-                    return Card(
-                      color: isDark ? const Color(0xFF1F2937) : null,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        side: BorderSide(
-                          color: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
-                          width: 1,
-                        ),
+                    return Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppColors.borderLight),
                       ),
-                      elevation: 1,
-                      child: Padding(
-                        padding: const EdgeInsets.all(20.0),
-                        child: Center(
-                          child: Text(
+                      child: Column(
+                        children: [
+                          Icon(Icons.inventory_2_outlined, size: 48, color: AppColors.textLight),
+                          const SizedBox(height: 12),
+                          Text(
                             'No Active Container Assigned',
-                            style: TextStyle(
-                              color: isDark ? Colors.grey.shade400 : Colors.grey,
+                            style: GoogleFonts.poppins(
                               fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: isDark ? Colors.white70 : AppColors.textDark,
                             ),
                           ),
-                        ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Wait for Customs Operations to arm an e-lock trip',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                        ],
                       ),
                     );
                   }
 
-                  final ShipmentModel activeShipment = activeShipments.first;
+                  final ShipmentModel active = activeShipments.first;
+                  final isTampered = active.tamperStatus.toLowerCase().contains('tamper');
+                  final isInside = active.geofenceStatus.toLowerCase().contains('inside');
 
-                  return Card(
-                    color: isDark ? const Color(0xFF1F2937) : null,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      side: BorderSide(
-                        color: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
-                        width: 1,
+                  return InkWell(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ContainerDetailsScreen(
+                            onStartRoute: () => onNavigate(1),
+                            containerData: {
+                              'containerId': active.containerId,
+                              'sealNumber': active.sealNumber,
+                              'origin': active.origin,
+                              'destination': active.destination,
+                              'cargoDescription': active.cargoDescription,
+                              'weight': active.weight,
+                              'type': active.type,
+                              'status': active.status,
+                              'iotDeviceId': active.iotDeviceId,
+                              'eta': active.eta,
+                              'distance': active.distance,
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: isTampered
+                              ? AppColors.dangerRed
+                              : AppColors.borderLight,
+                          width: isTampered ? 1.5 : 1.0,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.04),
+                            blurRadius: 14,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
-                    ),
-                    elevation: 1,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // Top row: Container ID & Status Badges
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                'assigned_container'.tr(),
-                                style: TextStyle(
-                                  color: isDark ? Colors.grey.shade400 : Colors.grey,
-                                  fontSize: 12,
-                                ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    active.containerId,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.bold,
+                                      color: isDark ? Colors.white : AppColors.textDark,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Seal: ${active.sealNumber}',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: AppColors.textMuted,
+                                    ),
+                                  ),
+                                ],
                               ),
                               Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 2),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF10A34E).withValues(alpha: 0.15),
+                                  color: isTampered ? AppColors.dangerLight : AppColors.successLight,
                                   borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: Text(
-                                  'filter_active'.tr(),
-                                  style: const TextStyle(
-                                    color: Color(0xFF10A34E),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF1E3A8A),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(
-                                  Icons.inventory_2,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Text(
-                                      activeShipment.containerId,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                        color: isDark ? Colors.white : const Color(0xFF1E3A8A),
-                                      ),
+                                    Icon(
+                                      isTampered ? Icons.warning_rounded : Icons.lock_outline,
+                                      size: 14,
+                                      color: isTampered ? AppColors.dangerRed : AppColors.successGreen,
                                     ),
+                                    const SizedBox(width: 4),
                                     Text(
-                                      '${activeShipment.origin} -> ${activeShipment.destination}',
-                                      style: TextStyle(
-                                        color: isDark ? Colors.grey.shade400 : Colors.grey.shade700,
-                                        fontSize: 13,
+                                      isTampered ? 'Tamper Alert' : 'Secure',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: isTampered ? AppColors.dangerRed : AppColors.successGreen,
                                       ),
-                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ],
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF1E3A8A),
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => ContainerDetailsScreen(
-                                      containerData: activeShipment.toContainerDetailsMap(),
-                                      onStartRoute: () {
-                                        ShipmentService.setActiveShipment(activeShipment);
-                                        onNavigate(1);
-                                      },
+
+                          const SizedBox(height: 14),
+
+                          // Transit Corridor info
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: isDark ? const Color(0xFF0F172A) : AppColors.background,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.route, size: 20, color: AppColors.primaryBlue),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    '${active.origin}  ➔  ${active.destination}',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: isDark ? Colors.white70 : AppColors.textDark,
                                     ),
                                   ),
-                                );
-                              },
-                              child: Text(
-                                'view_details'.tr(),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
                                 ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 14),
+
+                          // Status indicators (Geofence & IoT Telemetry)
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    isInside ? Icons.check_circle : Icons.error,
+                                    size: 15,
+                                    color: isInside ? AppColors.successGreen : AppColors.warningOrange,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    active.geofenceStatus,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: isInside ? AppColors.successGreen : AppColors.warningOrange,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Row(
+                                children: [
+                                  const Icon(Icons.developer_board, size: 15, color: AppColors.primaryBlue),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    active.iotDeviceId,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: AppColors.textMuted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+
+                          const Divider(height: 24),
+
+                          // Quick Action: Open GPS Corridor Navigation
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () => onNavigate(1),
+                              icon: const Icon(Icons.navigation_rounded, size: 18),
+                              label: Text(
+                                'Start GPS Navigation',
+                                style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primaryBlue,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                elevation: 0,
                               ),
                             ),
                           ),
@@ -265,65 +446,41 @@ class HomeScreen extends StatelessWidget {
                 },
               ),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
 
-              // Quick Actions Section
+              // SRS Quick Guidance Cards
               Text(
-                'quick_actions'.tr(),
-                style: TextStyle(
+                'Transit Guidelines & Safety',
+                style: GoogleFonts.poppins(
+                  fontSize: 15,
                   fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: isDark ? Colors.white : Colors.black87,
+                  color: isDark ? Colors.white : AppColors.textDark,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
 
-              _buildQuickAction(
-                context,
-                Icons.location_on,
-                'view_route'.tr(),
-                Colors.green,
-                () {
-                  onNavigate(1);
-                },
-                isDark,
-              ),
-              _buildQuickAction(
-                context,
-                Icons.inventory_2_outlined,
-                'my_shipments'.tr(),
-                const Color(0xFF1E3A8A),
-                () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ShipmentsScreen(
-                        onNavigateTab: onNavigate,
-                      ),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildGuidelineCard(
+                      icon: Icons.alt_route,
+                      title: 'Stay in Corridor',
+                      subtitle: '50m deviation triggers Customs breach',
+                      color: AppColors.infoBlue,
+                      bgColor: AppColors.infoLight,
                     ),
-                  );
-                },
-                isDark,
-              ),
-              _buildQuickAction(
-                context,
-                Icons.phone,
-                'contact_customs'.tr(),
-                Colors.purple,
-                () {
-                  _showContactCustomsDialog(context, isDark);
-                },
-                isDark,
-              ),
-              _buildQuickAction(
-                context,
-                Icons.warning_amber_rounded,
-                'report_issue'.tr(),
-                Colors.red,
-                () {
-                  _showReportIssueDialog(context, isDark);
-                },
-                isDark,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildGuidelineCard(
+                      icon: Icons.lock_clock,
+                      title: 'Intact Seal',
+                      subtitle: 'Do not detach RFID bolt seal',
+                      color: AppColors.warningOrange,
+                      bgColor: AppColors.warningLight,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -332,248 +489,40 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildQuickAction(
-    BuildContext context,
-    IconData icon,
-    String title,
-    Color color,
-    VoidCallback onTap,
-    bool isDark,
-  ) {
-    return Card(
-      color: isDark ? const Color(0xFF1F2937) : null,
-      margin: const EdgeInsets.only(bottom: 10),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: isDark ? Colors.grey.shade800 : Colors.transparent,
-        ),
+  Widget _buildGuidelineCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required Color bgColor,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: bgColor.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
-      elevation: 0.5,
-      child: ListTile(
-        leading: Icon(icon, color: color),
-        title: Text(
-          title,
-          style: TextStyle(
-            fontWeight: FontWeight.w500,
-            color: isDark ? Colors.white : Colors.black87,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            style: GoogleFonts.poppins(
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+              color: AppColors.textDark,
+            ),
           ),
-        ),
-        trailing: Icon(
-          Icons.chevron_right,
-          color: isDark ? Colors.grey.shade400 : Colors.grey,
-        ),
-        onTap: onTap,
-      ),
-    );
-  }
-
-  void _showContactCustomsDialog(BuildContext context, bool isDark) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF1F2937) : null,
-        title: Row(
-          children: [
-            const Icon(Icons.shield, color: Color(0xFF1E3A8A)),
-            const SizedBox(width: 8),
-            Text(
-              'contact_customs'.tr(),
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : Colors.black87,
-              ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: GoogleFonts.poppins(
+              fontSize: 10,
+              color: AppColors.textMuted,
             ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'SecureTrack SL Emergency Operations Centre',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.grey.shade300 : Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 12),
-            _buildPhoneRow(context, 'Customs Hotline', '+94112221300', '+94 11 222 1300', isDark),
-            const SizedBox(height: 8),
-            _buildPhoneRow(context, 'Control Room', '+94112478888', '+94 11 247 8888', isDark),
-            const SizedBox(height: 8),
-            _buildPhoneRow(context, 'Rapid Response Unit', '1933', '1933', isDark),
-            const SizedBox(height: 12),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('close'.tr()),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPhoneRow(BuildContext context, String label, String rawNumber, String displayNumber, bool isDark) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(10),
-      onTap: () async {
-        final Uri launchUri = Uri(
-          scheme: 'tel',
-          path: rawNumber,
-        );
-        try {
-          if (await canLaunchUrl(launchUri)) {
-            await launchUrl(launchUri, mode: LaunchMode.externalApplication);
-          } else {
-            await launchUrl(launchUri);
-          }
-        } catch (_) {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Could not launch phone dialer')),
-            );
-          }
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 10.0),
-        margin: const EdgeInsets.only(bottom: 6),
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E293B) : Colors.blue.shade50,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: isDark ? Colors.blue.shade900 : Colors.blue.shade100,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: const BoxDecoration(
-                color: Color(0xFF10B981),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.phone, size: 16, color: Colors.white),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                    ),
-                  ),
-                  Text(
-                    displayNumber,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : const Color(0xFF1E3A8A),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: const Color(0xFF10B981),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Text(
-                'CALL',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 11,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showReportIssueDialog(BuildContext context, bool isDark) {
-    final textController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF1F2937) : null,
-        title: Text(
-          'report_issue'.tr(),
-          style: TextStyle(
-            color: isDark ? Colors.white : Colors.black87,
-          ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Submit incident report directly to Sri Lanka Customs monitoring officers:',
-              style: TextStyle(
-                color: isDark ? Colors.grey.shade300 : Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: textController,
-              maxLines: 3,
-              style: TextStyle(
-                color: isDark ? Colors.white : Colors.black87,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Describe issue (e.g. breakdown, road blocked, tamper alert)...',
-                hintStyle: TextStyle(
-                  color: isDark ? Colors.grey.shade500 : Colors.grey.shade600,
-                ),
-                border: const OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('cancel'.tr()),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () async {
-              final user = FirebaseAuth.instance.currentUser;
-              if (user != null && textController.text.trim().isNotEmpty) {
-                try {
-                  await FirebaseFirestore.instance.collection('alerts').add({
-                    'driverId': user.uid,
-                    'title': 'Driver Incident Report',
-                    'description': textController.text.trim(),
-                    'type': 'emergency',
-                    'priority': 'high',
-                    'timestamp': FieldValue.serverTimestamp(),
-                    'isRead': false,
-                  });
-                } catch (_) {}
-              }
-              if (ctx.mounted) Navigator.pop(ctx);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Incident reported to Customs Control Room.'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            },
-            child: Text('submit'.tr(), style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),

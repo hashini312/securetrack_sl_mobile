@@ -5,8 +5,10 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'firebase_options.dart';
+import 'package:google_fonts/google_fonts.dart';
 
+import 'package:securetrack_sl/owner/components.dart';
+import 'package:securetrack_sl/driver/firebase_options.dart';
 import 'package:securetrack_sl/driver/menu.dart';
 import 'package:securetrack_sl/driver/driver_register_page.dart';
 import 'package:securetrack_sl/driver/settings_screen.dart';
@@ -17,8 +19,8 @@ import 'package:securetrack_sl/driver/screens/alerts_screen.dart';
 import 'package:securetrack_sl/driver/screens/profile_screen.dart';
 import 'package:securetrack_sl/driver/screens/shipments_screen.dart';
 import 'package:securetrack_sl/driver/services/shipment_service.dart';
-import 'package:securetrack_sl/driver/services/firebase_service.dart';
 import 'package:securetrack_sl/driver/services/session_service.dart';
+import 'package:securetrack_sl/driver/driver_sos_dialog.dart';
 
 // Top-level Background Notification Handler
 @pragma('vm:entry-point')
@@ -27,7 +29,6 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   debugPrint("Background FCM Message Received: ${message.messageId}");
 }
 
-// Theme Mode Notifier: ALWAYS defaults to light theme unless explicitly enabled in settings
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
 
 void main() async {
@@ -37,18 +38,12 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // Load saved dark mode preference from SharedPreferences (Default is false / Light Mode)
   final prefs = await SharedPreferences.getInstance();
   final bool isDarkMode = prefs.getBool('isDarkMode') ?? false;
   themeNotifier.value = isDarkMode ? ThemeMode.dark : ThemeMode.light;
 
-  // Pre-seed Sri Lanka Customs dataset in Firestore if empty
   ShipmentService.seedInitialShipmentsIfEmpty();
-
-  // Register Background Notification Handler
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-  // Request Notification Permission
   await FirebaseMessaging.instance.requestPermission();
 
   runApp(
@@ -74,16 +69,12 @@ class MyApp extends StatelessWidget {
       valueListenable: themeNotifier,
       builder: (context, currentMode, child) {
         return MaterialApp(
-          title: 'Driver App',
+          title: 'SecureTrack Driver',
           debugShowCheckedModeBanner: false,
           themeMode: currentMode,
-
-          // EasyLocalization Configuration
           localizationsDelegates: context.localizationDelegates,
           supportedLocales: context.supportedLocales,
           locale: context.locale,
-          
-          // Routes setup for seamless navigation
           routes: {
             '/login': (context) => const DriverLoginPage(),
             '/register': (context) => const DriverRegisterPage(),
@@ -92,133 +83,48 @@ class MyApp extends StatelessWidget {
             '/home_screen': (context) => const MainNavigationScreen(),
             '/shipments': (context) => const ShipmentsScreen(),
           },
-
-          // Light Theme (Default)
           theme: ThemeData(
             useMaterial3: true,
             brightness: Brightness.light,
-            scaffoldBackgroundColor: const Color(0xFFF8FAFC),
-            primaryColor: const Color(0xFF1E3A8A),
+            scaffoldBackgroundColor: AppColors.background,
+            primaryColor: AppColors.primaryBlue,
             colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFF1E3A8A),
-              brightness: Brightness.light,
-              primary: const Color(0xFF1E3A8A),
+              seedColor: AppColors.primaryBlue,
+              primary: AppColors.primaryBlue,
+              secondary: AppColors.accentBlue,
               surface: Colors.white,
+              brightness: Brightness.light,
             ),
+            textTheme: GoogleFonts.poppinsTextTheme(ThemeData.light().textTheme),
             appBarTheme: const AppBarTheme(
-              backgroundColor: Color(0xFFF8FAFC),
-              foregroundColor: Color.fromARGB(255, 23, 53, 134),
+              backgroundColor: Colors.white,
+              foregroundColor: AppColors.textDark,
               elevation: 0,
             ),
-            cardTheme: CardThemeData(
-              color: Colors.white,
-              surfaceTintColor: Colors.transparent,
-              elevation: 1,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            ),
           ),
-          
-          // Dark Theme (Only active when toggled in Settings)
           darkTheme: ThemeData(
             useMaterial3: true,
             brightness: Brightness.dark,
             scaffoldBackgroundColor: const Color(0xFF0F172A),
-            primaryColor: const Color(0xFF2563EB),
+            primaryColor: AppColors.accentBlue,
             colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFF2563EB),
-              brightness: Brightness.dark,
+              seedColor: AppColors.primaryBlue,
+              primary: AppColors.accentBlue,
+              secondary: const Color(0xFF60A5FA),
               surface: const Color(0xFF1E293B),
+              brightness: Brightness.dark,
             ),
+            textTheme: GoogleFonts.poppinsTextTheme(ThemeData.dark().textTheme),
             appBarTheme: const AppBarTheme(
-              backgroundColor: Color(0xFF0F172A),
+              backgroundColor: Color(0xFF1E293B),
               foregroundColor: Colors.white,
               elevation: 0,
             ),
-            cardTheme: CardThemeData(
-              color: const Color(0xFF1E293B),
-              surfaceTintColor: const Color.fromARGB(0, 14, 31, 108),
-              elevation: 1,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            ),
           ),
-
-          // Login State Management
-          home: const AuthWrapper(),
+          home: const MainNavigationScreen(),
         );
       },
     );
-  }
-}
-
-class AuthWrapper extends StatelessWidget {
-  const AuthWrapper({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(),
-            ),
-          );
-        }
-
-        final user = snapshot.data;
-        if (user == null) {
-          return const DriverLoginPage();
-        }
-
-        return FutureBuilder<bool>(
-          future: _verifyDriverAccessAndSession(user.uid),
-          builder: (context, checkSnapshot) {
-            if (checkSnapshot.connectionState == ConnectionState.waiting) {
-              return const Scaffold(
-                body: Center(
-                  child: CircularProgressIndicator(),
-                ),
-              );
-            }
-
-            final bool isAuthorized = checkSnapshot.data ?? false;
-            if (isAuthorized) {
-              return const MainNavigationScreen();
-            } else {
-              FirebaseAuth.instance.signOut();
-              return const DriverLoginPage();
-            }
-          },
-        );
-      },
-    );
-  }
-
-  static Future<bool> _verifyDriverAccessAndSession(String uid) async {
-    final bool sessionOk = await SessionService.isSessionValid();
-    if (!sessionOk) {
-      return false;
-    }
-
-    try {
-      DocumentSnapshot userDoc =
-          await FirebaseFirestore.instance.collection('users').doc(uid).get();
-      if (!userDoc.exists) {
-        await FirebaseService.seedInitialDataIfEmpty();
-        userDoc =
-            await FirebaseFirestore.instance.collection('users').doc(uid).get();
-      }
-      if (!userDoc.exists) {
-        return false;
-      }
-      final data = userDoc.data() as Map<String, dynamic>?;
-      final role = (data?['role'] ?? '').toString().toUpperCase();
-      return role == 'DRIVER';
-    } catch (e) {
-      debugPrint("Error checking driver access: $e");
-      return false;
-    }
   }
 }
 
@@ -250,7 +156,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    // Firestore Listener for Unread Alerts
     try {
       FirebaseFirestore.instance
           .collection('alerts')
@@ -263,52 +168,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             _unreadAlertsCount = snapshot.docs.length;
           });
         }
-      }, onError: (error) {
-        debugPrint("Firestore Query Error: $error");
       });
     } catch (e) {
-      debugPrint("Firestore Listener Setup Error: $e");
-    }
-
-    // Setup FCM Token and Listeners
-    _setupFcmToken(user.uid);
-  }
-
-  // Setup FCM Token and Listeners
-  Future<void> _setupFcmToken(String uid) async {
-    try {
-      String? token = await FirebaseMessaging.instance.getToken();
-      if (token != null) {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(uid)
-            .set({
-          'fcmToken': token,
-          'lastTokenUpdate': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-      }
-
-      // Token Refresh Listener
-      FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(uid)
-            .set({'fcmToken': newToken}, SetOptions(merge: true));
-      });
-
-      // Foreground Notification Listener
-      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-        debugPrint("Foreground notification received: ${message.notification?.title}");
-      });
-    } catch (e) {
-      debugPrint("FCM Token Error: $e");
+      debugPrint("Firestore Listener Error: $e");
     }
   }
 
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
-      // Reset unread count when clicking on Alerts tab
       if (index == 2) {
         _unreadAlertsCount = 0;
       }
@@ -317,19 +185,17 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Dynamic titles for each tab
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     final List<String> titles = [
-      'home'.tr(),
-      'route'.tr(),
-      'alerts'.tr(),
-      'profile'.tr(),
+      'Driver Dashboard',
+      'Corridor Navigation',
+      'Customs Alerts',
+      'Driver Profile',
     ];
 
-    // Navigation Screens
     final List<Widget> screens = [
-      HomeScreen(
-        onNavigate: _onItemTapped,
-      ),
+      HomeScreen(onNavigate: _onItemTapped),
       const RouteScreen(),
       const AlertsScreen(),
       const ProfileScreen(),
@@ -339,77 +205,96 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       onPointerDown: (_) => SessionService.updateActivity(),
       behavior: HitTestBehavior.translucent,
       child: Scaffold(
-        // Side Drawer
-        drawer: Menu(
-          onSelectTab: (index) {
-            _onItemTapped(index);
-          },
-        ),
-
+        drawer: Menu(onSelectTab: _onItemTapped),
         appBar: AppBar(
           centerTitle: true,
-          
-          // Tab Name
-          title: Text(
-            titles[_selectedIndex],
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          
-          // Menu Bar Icon
+          elevation: 0,
+          backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
           leading: Builder(
             builder: (context) => IconButton(
-              icon: const Icon(Icons.menu),
-              onPressed: () {
-                Scaffold.of(context).openDrawer();
-              },
+              icon: const Icon(Icons.menu_rounded, color: AppColors.textDark),
+              onPressed: () => Scaffold.of(context).openDrawer(),
             ),
           ),
-
-          // Top Notification Icon
+          title: Text(
+            titles[_selectedIndex],
+            style: GoogleFonts.poppins(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: isDark ? Colors.white : AppColors.textDark,
+            ),
+          ),
           actions: [
+            // Quick SOS button in AppBar
+            IconButton(
+              tooltip: 'Emergency SOS',
+              icon: const Icon(Icons.emergency_rounded, color: AppColors.dangerRed),
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (_) => const DriverSosDialog(
+                    containerId: 'Active Container',
+                    vehicleNo: 'Active Truck',
+                  ),
+                );
+              },
+            ),
+            // Unread Alert Notification badge
             IconButton(
               icon: Badge(
                 isLabelVisible: _unreadAlertsCount > 0,
                 label: Text('$_unreadAlertsCount'),
-                child: const Icon(Icons.notifications_none),
+                child: const Icon(Icons.notifications_outlined, color: AppColors.textDark),
               ),
-              onPressed: () {
-                _onItemTapped(2);
-              },
+              onPressed: () => _onItemTapped(2),
             ),
           ],
         ),
-
         body: screens[_selectedIndex],
-
-        bottomNavigationBar: BottomNavigationBar(
-          currentIndex: _selectedIndex,
-          onTap: _onItemTapped,
-          type: BottomNavigationBarType.fixed,
-          selectedItemColor: const Color.fromARGB(255, 23, 53, 134),
-          unselectedItemColor: const Color.fromARGB(255, 92, 125, 210),
-          items: [
-            BottomNavigationBarItem(
-              icon: const Icon(Icons.home),
-              label: 'home'.tr(),
-            ),
-            BottomNavigationBarItem(
-              icon: const Icon(Icons.map),
-              label: 'route'.tr(),
-            ),
-            BottomNavigationBarItem(
-              icon: Badge(
-                isLabelVisible: _unreadAlertsCount > 0,
-                label: Text('$_unreadAlertsCount'),
-                child: const Icon(Icons.notifications),
+        bottomNavigationBar: Container(
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, -3),
               ),
-              label: 'alerts'.tr(),
-            ),
-            BottomNavigationBarItem(
-              icon: const Icon(Icons.person),
-              label: 'profile'.tr(),
-            ),
-          ],
+            ],
+          ),
+          child: BottomNavigationBar(
+            currentIndex: _selectedIndex,
+            onTap: _onItemTapped,
+            type: BottomNavigationBarType.fixed,
+            backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+            selectedItemColor: AppColors.primaryBlue,
+            unselectedItemColor: AppColors.textLight,
+            selectedLabelStyle: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.bold),
+            unselectedLabelStyle: GoogleFonts.poppins(fontSize: 11),
+            elevation: 0,
+            items: [
+              BottomNavigationBarItem(
+                icon: const Icon(Icons.dashboard_rounded),
+                label: 'home'.tr(),
+              ),
+              BottomNavigationBarItem(
+                icon: const Icon(Icons.navigation_rounded),
+                label: 'route'.tr(),
+              ),
+              BottomNavigationBarItem(
+                icon: Badge(
+                  isLabelVisible: _unreadAlertsCount > 0,
+                  label: Text('$_unreadAlertsCount'),
+                  child: const Icon(Icons.notifications_rounded),
+                ),
+                label: 'alerts'.tr(),
+              ),
+              BottomNavigationBarItem(
+                icon: const Icon(Icons.person_rounded),
+                label: 'profile'.tr(),
+              ),
+            ],
+          ),
         ),
       ),
     );
