@@ -9,6 +9,7 @@ import 'components.dart';
 import 'firebase_service.dart';
 import 'models.dart';
 import 'session_manager.dart';
+import 'package:securetrack_sl/driver/services/session_service.dart';
 
 //Splash screen with modern real animation (no letters/text)
 class SplashScreen extends StatefulWidget {
@@ -299,8 +300,14 @@ class RoleSelectionScreen extends StatelessWidget {
 
                   // Driver Card
                   InkWell(
-                    onTap: () {
-                      Navigator.of(context).pushNamed('/login', arguments: 'Driver');
+                    onTap: () async {
+                      final isDriverValid = await SessionService.isSessionValid();
+                      if (!context.mounted) return;
+                      if (isDriverValid) {
+                        Navigator.of(context).pushNamed('/driver-home');
+                      } else {
+                        Navigator.of(context).pushNamed('/login', arguments: 'Driver');
+                      }
                     },
                     borderRadius: BorderRadius.circular(16),
                     child: Container(
