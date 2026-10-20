@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:securetrack_sl/owner/app_settings.dart';
+import 'package:securetrack_sl/owner/components.dart';
 import 'main.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -12,121 +13,169 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _notificationsEnabled = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadNotificationPreference();
-  }
-
-  Future<void> _loadNotificationPreference() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _notificationsEnabled = prefs.getBool('notificationsEnabled') ?? true;
-    });
-  }
-
-  Future<void> _toggleNotifications(bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('notificationsEnabled', value);
-    setState(() {
-      _notificationsEnabled = value;
-    });
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            value ? 'Push Notifications enabled' : 'Push Notifications silenced',
-          ),
-          duration: const Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
-  }
+  final _appSettings = AppSettingsController.instance;
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<ThemeMode>(
-      valueListenable: themeNotifier,
-      builder: (context, currentThemeMode, child) {
-        final bool isDarkMode = currentThemeMode == ThemeMode.dark;
+    return ListenableBuilder(
+      listenable: _appSettings,
+      builder: (context, _) {
+        final bool isDarkMode = _appSettings.isDarkMode;
 
         return Scaffold(
-          //App Bar
+          backgroundColor: isDarkMode ? const Color(0xFF0F172A) : AppColors.background,
           appBar: AppBar(
+            backgroundColor: isDarkMode ? const Color(0xFF1E293B) : Colors.white,
+            elevation: 0,
             leading: IconButton(
-              icon: const Icon(Icons.arrow_back),
+              icon: Icon(
+                Icons.arrow_back_ios_new_rounded,
+                size: 20,
+                color: isDarkMode ? Colors.white : AppColors.textDark,
+              ),
               onPressed: () => Navigator.pop(context),
             ),
             title: Text(
-              'settings'.tr().toUpperCase(),
-              style: TextStyle(
-                fontSize: 20,
+              'Driver Settings',
+              style: GoogleFonts.poppins(
+                fontSize: 17,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF1E3A8A),
+                color: isDarkMode ? Colors.white : AppColors.textDark,
               ),
+            ),
+            centerTitle: true,
           ),
-          centerTitle: true,
-        ),
           body: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // SECTION: APPEARANCE
+                _buildSectionHeader('APPEARANCE & DISPLAY', isDarkMode),
+                const SizedBox(height: 8),
 
-                // Dark Mode Toggle Switch
-                _buildToggleItem(
-                  context: context,
-                  icon: Icons.nightlight_round,
-                  title: 'dark_mode'.tr(),
-                  subtitle: isDarkMode
-                      ? 'dark_mode_enabled'.tr()
-                      : 'light_mode_active'.tr(),
-                  value: isDarkMode,
-                  onChanged: (bool value) async {
-                    themeNotifier.value = value ? ThemeMode.dark : ThemeMode.light;
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.setBool('isDarkMode', value);
-                  },
+                // Dark Mode Switch
+                _buildSettingsTile(
+                  isDarkMode: isDarkMode,
+                  icon: isDarkMode ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                  iconColor: AppColors.primaryBlue,
+                  title: 'Dark Mode',
+                  subtitle: isDarkMode ? 'Dark theme enabled for night transits' : 'Light theme active',
+                  trailing: Switch.adaptive(
+                    value: isDarkMode,
+                    activeColor: AppColors.primaryBlue,
+                    onChanged: (bool value) {
+                      _appSettings.setThemeMode(value ? ThemeMode.dark : ThemeMode.light);
+                      themeNotifier.value = value ? ThemeMode.dark : ThemeMode.light;
+                    },
+                  ),
                 ),
 
-                // Push Notifications Switch
-                _buildToggleItem(
-                  context: context,
-                  icon: Icons.notifications_active_outlined,
-                  title: 'push_notifications'.tr(),
-                  subtitle: _notificationsEnabled ? 'Active for critical alerts' : 'Disabled',
-                  value: _notificationsEnabled,
-                  onChanged: _toggleNotifications,
+                const SizedBox(height: 20),
+
+                // SECTION: NOTIFICATIONS & CORRIDORS
+                _buildSectionHeader('ALERTS & SAFETY', isDarkMode),
+                const SizedBox(height: 8),
+
+                _buildSettingsTile(
+                  isDarkMode: isDarkMode,
+                  icon: Icons.notifications_active_rounded,
+                  iconColor: AppColors.warningOrange,
+                  title: 'Corridor Breach Alarms',
+                  subtitle: 'Immediate audio siren when vehicle leaves corridor',
+                  trailing: Switch.adaptive(
+                    value: _appSettings.geofenceAlerts,
+                    activeColor: AppColors.primaryBlue,
+                    onChanged: (bool val) {
+                      setState(() {});
+                    },
+                  ),
                 ),
 
-                // Change Password Option
-                _buildSettingsItem(
-                  context: context,
-                  icon: Icons.lock_outline,
-                  title: 'change_password'.tr(),
-                  subtitle: 'Update driver login credentials',
-                  onTap: () => _showChangePasswordDialog(context),
+                const SizedBox(height: 8),
+
+                _buildSettingsTile(
+                  isDarkMode: isDarkMode,
+                  icon: Icons.battery_charging_full_rounded,
+                  iconColor: AppColors.successGreen,
+                  title: 'IoT Low Battery Warning',
+                  subtitle: 'Alert when ESP32 smart seal drops below 25%',
+                  trailing: Switch.adaptive(
+                    value: _appSettings.batteryAlerts,
+                    activeColor: AppColors.primaryBlue,
+                    onChanged: (bool val) {
+                      setState(() {});
+                    },
+                  ),
                 ),
 
-                // Help & Support
-                _buildSettingsItem(
-                  context: context,
-                  icon: Icons.help_outline,
-                  title: 'help_support'.tr(),
-                  subtitle: '24/7 Operations Hotline & Technical Support',
-                  onTap: () => _showHelpSupportDialog(context),
+                const SizedBox(height: 20),
+
+                // SECTION: SECURITY
+                _buildSectionHeader('SECURITY & CREDENTIALS', isDarkMode),
+                const SizedBox(height: 8),
+
+                _buildSettingsTile(
+                  isDarkMode: isDarkMode,
+                  icon: Icons.lock_reset_rounded,
+                  iconColor: AppColors.primaryBlue,
+                  title: 'Change Password',
+                  subtitle: 'Update your driver portal password',
+                  onTap: () => _showChangePasswordDialog(context, isDarkMode),
+                  trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.textLight),
                 ),
 
-                // About App
-                _buildSettingsItem(
-                  context: context,
-                  icon: Icons.info_outline,
-                  title: 'about_app'.tr(),
-                  subtitle: 'v1.0.0 (Sri Lanka Customs ECTS)',
-                  onTap: () => _showAboutAppDialog(context),
+                const SizedBox(height: 20),
+
+                // SECTION: SUPPORT & ABOUT
+                _buildSectionHeader('SYSTEM & SUPPORT', isDarkMode),
+                const SizedBox(height: 8),
+
+                _buildSettingsTile(
+                  isDarkMode: isDarkMode,
+                  icon: Icons.support_agent_rounded,
+                  iconColor: AppColors.infoBlue,
+                  title: 'Customs Emergency Hotline (1937)',
+                  subtitle: '24/7 Sri Lanka Customs Control Center',
+                  onTap: () => _showHelpSupportDialog(context, isDarkMode),
+                  trailing: const Icon(Icons.phone_in_talk_rounded, size: 18, color: AppColors.infoBlue),
                 ),
+
+                const SizedBox(height: 8),
+
+                _buildSettingsTile(
+                  isDarkMode: isDarkMode,
+                  icon: Icons.info_outline_rounded,
+                  iconColor: AppColors.textMuted,
+                  title: 'About SecureTrack SL',
+                  subtitle: 'v1.0.0 (Customs Container Tracking System)',
+                  onTap: () => _showAboutAppDialog(context, isDarkMode),
+                  trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.textLight),
+                ),
+
+                const SizedBox(height: 32),
+
+                // Log Out Button
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showLogoutDialog(context),
+                    icon: const Icon(Icons.logout_rounded, color: AppColors.dangerRed),
+                    label: Text(
+                      'Sign Out from Driver Portal',
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.dangerRed,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: const BorderSide(color: AppColors.dangerRed),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
               ],
             ),
           ),
@@ -135,289 +184,222 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // Change Password
-  void _showChangePasswordDialog(BuildContext parentContext) {
-    final currentPasswordController = TextEditingController();
-    final newPasswordController = TextEditingController();
-    final confirmPasswordController = TextEditingController();
-    bool obscure = true;
-
-    showDialog(
-      context: parentContext,
-      builder: (dialogCtx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Row(
-            children: [
-              const Icon(Icons.lock_reset, color: Color(0xFF1E3A8A)),
-              const SizedBox(width: 8),
-              Text('change_password'.tr(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: currentPasswordController,
-                  obscureText: obscure,
-                  decoration: const InputDecoration(
-                    labelText: 'Current Password',
-                    prefixIcon: Icon(Icons.lock_outline),
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: newPasswordController,
-                  obscureText: obscure,
-                  decoration: const InputDecoration(
-                    labelText: 'New Password',
-                    prefixIcon: Icon(Icons.vpn_key_outlined),
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: confirmPasswordController,
-                  obscureText: obscure,
-                  decoration: const InputDecoration(
-                    labelText: 'Confirm New Password',
-                    prefixIcon: Icon(Icons.check_circle_outline),
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Checkbox(
-                      value: !obscure,
-                      onChanged: (val) => setDialogState(() => obscure = !val!),
-                    ),
-                    const Text('Show Passwords', style: TextStyle(fontSize: 12)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogCtx),
-              child: Text('cancel'.tr()),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E3A8A)),
-              onPressed: () async {
-                final messenger = ScaffoldMessenger.of(parentContext);
-                final newPass = newPasswordController.text.trim();
-                final confirmPass = confirmPasswordController.text.trim();
-
-                if (newPass.isEmpty || newPass.length < 6) {
-                  messenger.showSnackBar(
-                    const SnackBar(content: Text('New password must be at least 6 characters.')),
-                  );
-                  return;
-                }
-                if (newPass != confirmPass) {
-                  messenger.showSnackBar(
-                    const SnackBar(content: Text('Passwords do not match.')),
-                  );
-                  return;
-                }
-
-                try {
-                  final user = FirebaseAuth.instance.currentUser;
-                  if (user != null) {
-                    await user.updatePassword(newPass);
-                    if (dialogCtx.mounted) Navigator.pop(dialogCtx);
-                    messenger.showSnackBar(
-                      const SnackBar(
-                        content: Text('Password updated successfully!'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
-                  } else {
-                    if (dialogCtx.mounted) Navigator.pop(dialogCtx);
-                    messenger.showSnackBar(
-                      const SnackBar(content: Text('Please log in first.')),
-                    );
-                  }
-                } catch (e) {
-                  messenger.showSnackBar(
-                    SnackBar(content: Text('Error updating password: $e'), backgroundColor: Colors.red),
-                  );
-                }
-              },
-              child: Text('save_changes'.tr(), style: const TextStyle(color: Colors.white)),
-            ),
-          ],
+  Widget _buildSectionHeader(String title, bool isDarkMode) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4.0),
+      child: Text(
+        title,
+        style: GoogleFonts.poppins(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 0.8,
+          color: isDarkMode ? Colors.white60 : AppColors.textMuted,
         ),
       ),
     );
   }
 
-  // Help & Support
-  void _showHelpSupportDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            const Icon(Icons.support_agent, color: Color(0xFF1E3A8A)),
-            const SizedBox(width: 8),
-            Text('help_support'.tr(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Sri Lanka Customs 24/7 Operations Desk', style: TextStyle(fontWeight: FontWeight.bold)),
-            SizedBox(height: 10),
-            Text('📞 Customs Hotline: 1933 / +94 11 222 1300'),
-            SizedBox(height: 4),
-            Text('🚨 Emergency Control Room: +94 11 247 8888'),
-            SizedBox(height: 4),
-            Text('✉️ IT Support: support@customs.gov.lk'),
-            SizedBox(height: 10),
-            Divider(),
-            Text(
-              'If your container reports a false seal tamper alarm or route blockage, stay inside your vehicle and call the Control Room immediately.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('close'.tr()),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // About App
-  void _showAboutAppDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            const Icon(Icons.info, color: Color(0xFF1E3A8A)),
-            const SizedBox(width: 8),
-            Text('about_app'.tr(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('SecureTrack SL - Driver Application', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            Text('Version 1.0.0 (Release Build)', style: TextStyle(color: Colors.grey, fontSize: 13)),
-            SizedBox(height: 10),
-            Text(
-              'An IoT-Based Real-Time Container Monitoring and Anti-Theft Framework for Sri Lanka Customs.\n\n'
-              'Features ESP32 telemetry, dual-sensor intrusion detection, dynamic geofencing, and automated route verification.',
-              style: TextStyle(fontSize: 13),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('close'.tr()),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Common Settings Item Widget
-  Widget _buildSettingsItem({
-    required BuildContext context,
+  Widget _buildSettingsTile({
+    required bool isDarkMode,
     required IconData icon,
+    required Color iconColor,
     required String title,
-    String? subtitle,
-    required VoidCallback onTap,
-    Color? titleColor,
-    Color? iconColor,
+    required String subtitle,
+    Widget? trailing,
+    VoidCallback? onTap,
   }) {
-    final theme = Theme.of(context);
-
     return Container(
-      margin: const EdgeInsets.only(bottom: 8.0),
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(12.0),
+        color: isDarkMode ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDarkMode ? Colors.transparent : AppColors.borderLight,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: ListTile(
-        leading: Icon(icon, color: iconColor ?? theme.iconTheme.color),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        leading: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: iconColor.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: iconColor, size: 22),
+        ),
         title: Text(
           title,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
-            color: titleColor ?? theme.textTheme.bodyLarge?.color,
+          style: GoogleFonts.poppins(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: isDarkMode ? Colors.white : AppColors.textDark,
           ),
         ),
-        subtitle: subtitle != null
-            ? Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
-                ),
-              )
-            : null,
-        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+        subtitle: Text(
+          subtitle,
+          style: GoogleFonts.poppins(
+            fontSize: 11,
+            color: isDarkMode ? Colors.white60 : AppColors.textMuted,
+          ),
+        ),
+        trailing: trailing,
         onTap: onTap,
       ),
     );
   }
 
-  // Toggle Item Widget (Dark Mode / Notifications)
-  Widget _buildToggleItem({
-    required BuildContext context,
-    required IconData icon,
-    required String title,
-    String? subtitle,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    final theme = Theme.of(context);
+  void _showChangePasswordDialog(BuildContext parentContext, bool isDarkMode) {
+    final newPassCtrl = TextEditingController();
+    final confirmPassCtrl = TextEditingController();
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8.0),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(12.0),
-      ),
-      child: ListTile(
-        leading: Icon(icon, color: theme.iconTheme.color),
+    showDialog(
+      context: parentContext,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDarkMode ? const Color(0xFF1E293B) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(
-          title,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
-            color: theme.textTheme.bodyLarge?.color,
+          'Change Password',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: newPassCtrl,
+              obscureText: true,
+              style: GoogleFonts.poppins(fontSize: 13),
+              decoration: InputDecoration(
+                labelText: 'New Password',
+                labelStyle: GoogleFonts.poppins(fontSize: 12),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: confirmPassCtrl,
+              obscureText: true,
+              style: GoogleFonts.poppins(fontSize: 13),
+              decoration: InputDecoration(
+                labelText: 'Confirm Password',
+                labelStyle: GoogleFonts.poppins(fontSize: 12),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: GoogleFonts.poppins()),
           ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryBlue,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () async {
+              if (newPassCtrl.text.trim().isEmpty || newPassCtrl.text != confirmPassCtrl.text) {
+                if (parentContext.mounted) {
+                  ScaffoldMessenger.of(parentContext).showSnackBar(
+                    const SnackBar(content: Text('Passwords do not match or empty!')),
+                  );
+                }
+                return;
+              }
+              try {
+                final user = FirebaseAuth.instance.currentUser;
+                await user?.updatePassword(newPassCtrl.text.trim());
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (parentContext.mounted) {
+                  ScaffoldMessenger.of(parentContext).showSnackBar(
+                    const SnackBar(content: Text('Password updated successfully!'), backgroundColor: AppColors.successGreen),
+                  );
+                }
+              } catch (e) {
+                if (parentContext.mounted) {
+                  ScaffoldMessenger.of(parentContext).showSnackBar(
+                    SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.dangerRed),
+                  );
+                }
+              }
+            },
+            child: Text('Update', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showHelpSupportDialog(BuildContext context, bool isDarkMode) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDarkMode ? const Color(0xFF1E293B) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Sri Lanka Customs Support', style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 16)),
+        content: Text(
+          'Hotline: 1937\nOperations Room: +94 11 222 1937\nEmail: ects-support@customs.gov.lk\nHours: 24/7 Round-the-clock Monitoring',
+          style: GoogleFonts.poppins(fontSize: 13, height: 1.5),
         ),
-        subtitle: subtitle != null
-            ? Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
-                ),
-              )
-            : null,
-        trailing: Switch(
-          value: value,
-          onChanged: onChanged,
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('OK', style: GoogleFonts.poppins())),
+        ],
+      ),
+    );
+  }
+
+  void _showAboutAppDialog(BuildContext context, bool isDarkMode) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDarkMode ? const Color(0xFF1E293B) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('SecureTrack SL', style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 16)),
+        content: Text(
+          'Version: 1.0.0+1\nIoT Container Transit Corridor Monitoring\nDivision of Information Technology, ITUM / Sri Lanka Customs\n\nAll rights reserved © 2026',
+          style: GoogleFonts.poppins(fontSize: 12, height: 1.5),
         ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Close', style: GoogleFonts.poppins())),
+        ],
+      ),
+    );
+  }
+
+  void _showLogoutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Sign Out', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+        content: Text('Are you sure you want to sign out from the Driver Portal?', style: GoogleFonts.poppins(fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: GoogleFonts.poppins())),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.dangerRed,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await FirebaseAuth.instance.signOut();
+              if (context.mounted) {
+                Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil('/role-selection', (route) => false);
+              }
+            },
+            child: Text('Sign Out', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+          ),
+        ],
       ),
     );
   }
