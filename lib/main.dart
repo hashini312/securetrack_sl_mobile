@@ -1,17 +1,26 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'app_settings.dart';
-import 'components.dart';
-import 'firebase_service.dart';
-import 'models.dart';
-import 'screens.dart';
-import 'session_manager.dart';
-import 'settings_screen.dart';
+import 'package:easy_localization/easy_localization.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:securetrack_sl/owner/app_settings.dart';
+import 'package:securetrack_sl/owner/firebase_service.dart' as owner_fs;
+import 'package:securetrack_sl/owner/session_manager.dart' as owner_sm;
+import 'package:securetrack_sl/owner/screens.dart' as owner_screens;
+import 'package:securetrack_sl/owner/main.dart' as owner_main;
+
+import 'package:securetrack_sl/driver/firebase_options.dart';
+import 'package:securetrack_sl/driver/driver_login_page.dart';
+import 'package:securetrack_sl/driver/services/session_service.dart';
+import 'package:securetrack_sl/driver/services/shipment_service.dart';
+import 'package:securetrack_sl/driver/main.dart' as driver_app;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await EasyLocalization.ensureInitialized();
+
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -19,15 +28,37 @@ void main() async {
     ),
   );
 
-  // Initialize Session Manager & Firebase Cloud Backend
-  await SessionManager.instance.init();
-  await FirebaseService.instance.init();
+  // Initialize Firebase
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
-  runApp(const SecureTrackApp());
+  // Initialize Owner services
+  await owner_sm.SessionManager.instance.init();
+  await owner_fs.FirebaseService.instance.init();
+
+  // Initialize Driver services
+  final prefs = await SharedPreferences.getInstance();
+  final bool isDarkMode = prefs.getBool('isDarkMode') ?? false;
+  driver_app.themeNotifier.value = isDarkMode ? ThemeMode.dark : ThemeMode.light;
+  ShipmentService.seedInitialShipmentsIfEmpty();
+
+  runApp(
+    EasyLocalization(
+      supportedLocales: const [
+        Locale('en'),
+        Locale('si'),
+        Locale('ta'),
+      ],
+      path: 'assets/translations',
+      fallbackLocale: const Locale('en'),
+      child: const SecureTrackUnifiedApp(),
+    ),
+  );
 }
 
-class SecureTrackApp extends StatelessWidget {
-  const SecureTrackApp({super.key});
+class SecureTrackUnifiedApp extends StatelessWidget {
+  const SecureTrackUnifiedApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -39,37 +70,38 @@ class SecureTrackApp extends StatelessWidget {
         return MaterialApp(
           title: 'SecureTrack SL',
           debugShowCheckedModeBanner: false,
+          localizationsDelegates: context.localizationDelegates,
+          supportedLocales: context.supportedLocales,
+          locale: context.locale,
           themeMode: settings.themeMode,
-          // Light Theme
           theme: ThemeData(
             useMaterial3: true,
             brightness: Brightness.light,
-            scaffoldBackgroundColor: AppColors.background,
-            primaryColor: AppColors.primaryBlue,
+            scaffoldBackgroundColor: const Color(0xFFF8FAFC),
+            primaryColor: const Color(0xFF1E3A8A),
             colorScheme: ColorScheme.fromSeed(
-              seedColor: AppColors.primaryBlue,
-              primary: AppColors.primaryBlue,
-              secondary: AppColors.accentBlue,
+              seedColor: const Color(0xFF1E3A8A),
+              primary: const Color(0xFF1E3A8A),
+              secondary: const Color(0xFF0284C7),
               surface: Colors.white,
               brightness: Brightness.light,
             ),
             textTheme: GoogleFonts.poppinsTextTheme(ThemeData.light().textTheme),
             appBarTheme: const AppBarTheme(
               backgroundColor: Colors.white,
-              foregroundColor: AppColors.textDark,
+              foregroundColor: Color(0xFF0F172A),
               elevation: 0,
             ),
           ),
-          // Dark Theme for night port operations & custom logistics
           darkTheme: ThemeData(
             useMaterial3: true,
             brightness: Brightness.dark,
             scaffoldBackgroundColor: const Color(0xFF0F172A),
-            primaryColor: AppColors.accentBlue,
+            primaryColor: const Color(0xFF3B82F6),
             colorScheme: ColorScheme.fromSeed(
-              seedColor: AppColors.primaryBlue,
-              primary: AppColors.accentBlue,
-              secondary: const Color(0xFF60A5FA),
+              seedColor: const Color(0xFF3B82F6),
+              primary: const Color(0xFF3B82F6),
+              secondary: const Color(0xFF38BDF8),
               surface: const Color(0xFF1E293B),
               brightness: Brightness.dark,
             ),
@@ -80,301 +112,234 @@ class SecureTrackApp extends StatelessWidget {
               elevation: 0,
             ),
           ),
-          initialRoute: '/',
-          onGenerateRoute: (routeSettings) {
-            switch (routeSettings.name) {
-              case '/':
-                return MaterialPageRoute(builder: (_) => const SplashScreen());
-              case '/role-selection':
-                return MaterialPageRoute(builder: (_) => const RoleSelectionScreen());
-              case '/login':
-                return MaterialPageRoute(builder: (_) => const LoginScreen());
-              case '/register':
-                return MaterialPageRoute(builder: (_) => const RegisterScreen());
-              case '/home':
-                return MaterialPageRoute(builder: (_) => const MainShell());
-              case '/container-details':
-                final container = routeSettings.arguments as ContainerModel? ?? ContainerModel.sampleContainers.first;
-                return MaterialPageRoute(builder: (_) => ContainerDetailsScreen(container: container));
-              case '/live-tracking':
-                final container = routeSettings.arguments as ContainerModel?;
-                return MaterialPageRoute(builder: (_) => LiveTrackingScreen(container: container));
-              case '/settings':
-                return MaterialPageRoute(builder: (_) => const SettingsScreen());
-              default:
-                return MaterialPageRoute(builder: (_) => const SplashScreen());
-            }
-          },
+          home: const UnifiedRoleSelectorScreen(),
         );
       },
     );
   }
 }
 
-/// Main Shell hosting the 4 Bottom Navigation Bar tabs: Home, Map, Alerts, Profile
-class MainShell extends StatefulWidget {
-  final int initialIndex;
-
-  const MainShell({super.key, this.initialIndex = 0});
+/// Unified Role Selector Landing Page
+class UnifiedRoleSelectorScreen extends StatelessWidget {
+  const UnifiedRoleSelectorScreen({super.key});
 
   @override
-  State<MainShell> createState() => _MainShellState();
-}
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const SizedBox(height: 24),
 
-class _MainShellState extends State<MainShell> {
-  late int _currentIndex;
-  StreamSubscription<List<ContainerModel>>? _containerAlertSub;
-  final Set<String> _notifiedTamperedContainers = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _currentIndex = widget.initialIndex;
-    _startTamperListener();
-  }
-
-  void _startTamperListener() {
-    _containerAlertSub = FirebaseService.instance.getContainersStream().listen((containers) {
-      for (final c in containers) {
-        final isTampered = c.sealStatus.trim().toLowerCase() == 'tampered';
-        if (isTampered && !_notifiedTamperedContainers.contains(c.id)) {
-          _notifiedTamperedContainers.add(c.id);
-          if (mounted && AppSettingsController.instance.sealTamperSiren) {
-            _showCriticalTamperDialog(c);
-          }
-        } else if (!isTampered && _notifiedTamperedContainers.contains(c.id)) {
-          _notifiedTamperedContainers.remove(c.id);
-        }
-      }
-    });
-  }
-
-  void _showCriticalTamperDialog(ContainerModel container) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        backgroundColor: AppSettingsController.instance.isDarkMode ? const Color(0xFF1E293B) : Colors.white,
-        titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-        contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: const BoxDecoration(
-                color: Color(0xFFFEE2E2),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.warning_rounded,
-                color: Color(0xFFDC2626),
-                size: 28,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'SECURITY ALERT',
-                style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: const Color(0xFFDC2626),
+              // Emblem / Logo
+              Container(
+                width: 110,
+                height: 110,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF1E3A8A).withValues(alpha: 0.15),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.all(8),
+                child: Image.asset(
+                  'assets/images/logo.png',
+                  fit: BoxFit.contain,
+                  errorBuilder: (ctx, err, stack) => const Icon(
+                    Icons.security_rounded,
+                    size: 64,
+                    color: Color(0xFF1E3A8A),
+                  ),
                 ),
               ),
+
+              const SizedBox(height: 28),
+
+              const Text(
+                'SecureTrack SL',
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0F172A),
+                  letterSpacing: -0.5,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Sri Lanka Customs Container Transit Monitoring',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+
+              const SizedBox(height: 40),
+
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Select Portal to Continue',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF334155),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Portal Card 1: Container Owner
+              _buildPortalCard(
+                context: context,
+                title: 'Container Owner Portal',
+                subtitle: 'Track live containers, view analytics & security status',
+                icon: Icons.corporate_fare_rounded,
+                accentColor: const Color(0xFF1E3A8A),
+                onTap: () {
+                  final sm = owner_sm.SessionManager.instance;
+                  final cachedSession = sm.getCachedValidSession();
+                  if (cachedSession != null) {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const owner_main.MainShell(),
+                      ),
+                    );
+                  } else {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const owner_screens.LoginScreen(),
+                      ),
+                    );
+                  }
+                },
+              ),
+
+              const SizedBox(height: 16),
+
+              // Portal Card 2: Truck Driver
+              _buildPortalCard(
+                context: context,
+                title: 'Truck Driver Portal',
+                subtitle: 'View assigned shipments, GPS corridor routes & alerts',
+                icon: Icons.local_shipping_rounded,
+                accentColor: const Color(0xFF0284C7),
+                onTap: () async {
+                  final isValid = await SessionService.isSessionValid();
+                  if (context.mounted) {
+                    if (isValid) {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const driver_app.MainNavigationScreen(),
+                        ),
+                      );
+                    } else {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const DriverLoginPage(),
+                        ),
+                      );
+                    }
+                  }
+                },
+              ),
+
+              const SizedBox(height: 48),
+
+              Text(
+                'Sri Lanka Customs • Secure Transit Command',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey.shade400,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPortalCard({
+    required BuildContext context,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color accentColor,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Text(
-              'Unauthorized Container Breach Detected!',
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppSettingsController.instance.isDarkMode ? Colors.white : AppColors.textDark,
-              ),
-            ),
-            const SizedBox(height: 8),
             Container(
-              padding: const EdgeInsets.all(12),
+              width: 52,
+              height: 52,
               decoration: BoxDecoration(
-                color: AppSettingsController.instance.isDarkMode ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: AppSettingsController.instance.isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
-                ),
+                color: accentColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(14),
               ),
+              child: Icon(icon, color: accentColor, size: 28),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Container ID: ${container.id}',
-                    style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.accentBlue),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Status: Electronic Seal (e-Seal) Compromised',
-                    style: GoogleFonts.poppins(fontSize: 11, color: const Color(0xFFDC2626), fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Driver: ${container.driverName}',
-                    style: GoogleFonts.poppins(
-                      fontSize: 11,
-                      color: AppSettingsController.instance.isDarkMode ? const Color(0xFF94A3B8) : AppColors.textMuted,
+                    title,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF0F172A),
                     ),
                   ),
+                  const SizedBox(height: 4),
                   Text(
-                    'Route: ${container.route}',
-                    style: GoogleFonts.poppins(
-                      fontSize: 11,
-                      color: AppSettingsController.instance.isDarkMode ? const Color(0xFF94A3B8) : AppColors.textMuted,
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF64748B),
+                      height: 1.3,
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 12),
-            Text(
-              'Customs enforcement & owner audit stream notified immediately.',
-              style: GoogleFonts.poppins(
-                fontSize: 11,
-                color: AppSettingsController.instance.isDarkMode ? const Color(0xFF94A3B8) : AppColors.textMuted,
-              ),
+            const Icon(
+              Icons.arrow_forward_ios_rounded,
+              size: 16,
+              color: Color(0xFF94A3B8),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(
-              'Dismiss',
-              style: GoogleFonts.poppins(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textMuted,
-              ),
-            ),
-          ),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFDC2626),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            ),
-            icon: const Icon(Icons.location_on, size: 16),
-            label: Text(
-              'Track on Live Map',
-              style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.bold),
-            ),
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              _onTabTapped(1); // Switch to Map tab
-            },
-          ),
-        ],
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _containerAlertSub?.cancel();
-    super.dispose();
-  }
-
-  void _onTabTapped(int index) {
-    setState(() {
-      _currentIndex = index;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final settings = AppSettingsController.instance;
-    final isDark = settings.isDarkMode;
-
-    final List<Widget> pages = [
-      DashboardScreen(onNavigateTab: _onTabTapped),
-      const LiveTrackingScreen(),
-      AlertsScreen(onNavigateTab: _onTabTapped),
-      ProfileScreen(onNavigateTab: _onTabTapped),
-    ];
-
-    return ListenableBuilder(
-      listenable: settings,
-      builder: (context, _) {
-        return Listener(
-          onPointerDown: (_) => SessionManager.instance.updateActivity(),
-          behavior: HitTestBehavior.translucent,
-          child: PopScope(
-            canPop: _currentIndex == 0,
-            onPopInvokedWithResult: (didPop, result) {
-              if (didPop) return;
-              if (_currentIndex != 0) {
-                // If user is on Map, Alerts, or Profile, back button takes them to Dashboard (Home) tab!
-                setState(() {
-                  _currentIndex = 0;
-                });
-              }
-            },
-            child: Scaffold(
-              body: IndexedStack(
-                index: _currentIndex,
-                children: pages,
-              ),
-          bottomNavigationBar: Container(
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E293B) : Colors.white,
-              border: Border(
-                top: BorderSide(
-                  color: isDark ? const Color(0xFF334155) : AppColors.borderLight,
-                  width: 1,
-                ),
-              ),
-            ),
-            child: BottomNavigationBar(
-              currentIndex: _currentIndex,
-              onTap: _onTabTapped,
-              type: BottomNavigationBarType.fixed,
-              backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-              selectedItemColor: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
-              unselectedItemColor: isDark ? const Color(0xFF64748B) : const Color(0xFF6BA2D4),
-              selectedLabelStyle: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600),
-              unselectedLabelStyle: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.normal),
-              elevation: 0,
-              items: [
-                BottomNavigationBarItem(
-                  icon: const Icon(Icons.home_outlined),
-                  activeIcon: const Icon(Icons.home),
-                  label: settings.tr('dashboard'),
-                ),
-                BottomNavigationBarItem(
-                  icon: const Icon(Icons.location_on_outlined),
-                  activeIcon: const Icon(Icons.location_on),
-                  label: settings.tr('live_tracking'),
-                ),
-                BottomNavigationBarItem(
-                  icon: const Icon(Icons.notifications_outlined),
-                  activeIcon: const Icon(Icons.notifications),
-                  label: settings.tr('alerts'),
-                ),
-                BottomNavigationBarItem(
-                  icon: const Icon(Icons.person_outline),
-                  activeIcon: const Icon(Icons.person),
-                  label: settings.tr('profile'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  },
-);
   }
 }
