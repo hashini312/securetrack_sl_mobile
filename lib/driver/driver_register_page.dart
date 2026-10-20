@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'main.dart';
 
 class DriverRegisterPage extends StatefulWidget {
   const DriverRegisterPage({super.key});
@@ -76,7 +77,7 @@ class _DriverRegisterScreenState extends State<DriverRegisterPage> {
       );
 
       // Navigate directly to Home Screen after successful registration
-      Navigator.pushReplacementNamed(context, '/home_screen');
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MainNavigationScreen()));
 
     } on FirebaseAuthException catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(

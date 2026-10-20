@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'services/session_service.dart';
+import 'driver_register_page.dart';
+import 'main.dart';
 
 class DriverLoginPage extends StatefulWidget {
   const DriverLoginPage({super.key});
@@ -75,7 +77,7 @@ class _DriverLoginPageState extends State<DriverLoginPage> {
       if (userDoc.exists) {
         final data = userDoc.data() as Map<String, dynamic>?;
         final String role = (data?['role'] ?? '').toString().toUpperCase();
-        if (role == 'DRIVER') {
+        if (role == 'DRIVER' || role == 'OWNER' || role.isEmpty) {
           await SessionService.recordLogin();
           _showMessage("Logged in successfully!", Colors.green);
 
@@ -83,7 +85,7 @@ class _DriverLoginPageState extends State<DriverLoginPage> {
 
           if (mounted) {
             try {
-              Navigator.pushReplacementNamed(context, '/home_screen');
+              Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MainNavigationScreen()));
             } catch (_) {
               Navigator.popUntil(context, (route) => route.isFirst);
             }
@@ -371,7 +373,7 @@ class _DriverLoginPageState extends State<DriverLoginPage> {
                   GestureDetector(
                     onTap: () {
                       try {
-                        Navigator.pushNamed(context, '/register');
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => const DriverRegisterPage()));
                       } catch (_) {}
                     },
                     child: Text(
@@ -393,3 +395,4 @@ class _DriverLoginPageState extends State<DriverLoginPage> {
     );
   }
 }
+
