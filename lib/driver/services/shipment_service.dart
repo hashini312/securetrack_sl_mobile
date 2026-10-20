@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import '../models/shipment_model.dart';
 import 'firebase_service.dart';
 
@@ -8,7 +7,6 @@ class ShipmentService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   static const String collectionName = 'shipments';
   
-  // ValueNotifier for the currently selected/active shipment for navigation
   static final ValueNotifier<ShipmentModel?> activeShipmentNotifier =
       ValueNotifier<ShipmentModel?>(null);
 
@@ -26,49 +24,31 @@ class ShipmentService {
     await FirebaseService.seedAllCollections();
   }
 
-  /// Stream shipments in real-time with driver UID and status filtering
-  /// - 'All': Shows all Active & Completed shipments belonging to logged-in driver UID
-  /// - 'Active': Shows only Active shipments for logged-in driver UID
-  /// - 'Completed': Shows only Completed shipments for logged-in driver UID
-  /// - 'Pending': Shows all Pending shipments to ALL drivers
+  /// Stream shipments in real-time
+  /// Shows all Active, Completed, or Pending Customs shipments seamlessly.
   static Stream<List<ShipmentModel>> streamShipments({String? statusFilter}) {
-    final String? currentDriverId = FirebaseAuth.instance.currentUser?.uid;
-
-    if (currentDriverId == null) {
-      return Stream.value([]);
-    }
-    
     final Query query = _firestore.collection(collectionName);
     
     return query.snapshots().map((snapshot) {
-      if (snapshot.docs.isEmpty) {
-        return [];
+      List<ShipmentModel> list = [];
+
+      if (snapshot.docs.isNotEmpty) {
+        list = snapshot.docs
+            .map((doc) => ShipmentModel.fromFirestore(doc))
+            .toList();
       }
 
-      final List<ShipmentModel> allShipments = snapshot.docs
-          .map((doc) => ShipmentModel.fromFirestore(doc))
-          .toList();
+      // If Firestore is empty, fallback to the pre-configured customs fleet dataset
+      if (list.isEmpty) {
+        list = defaultCustomsShipments;
+      }
 
       final String filter = (statusFilter ?? 'All').trim().toLowerCase();
 
       if (filter == 'all') {
-        // All category: All Active and Completed shipments for the driver's UID
-        return allShipments.where((s) {
-          final bool isDriverMatch = (s.driverId ?? '').trim() == currentDriverId.trim();
-          final String status = s.status.trim().toLowerCase();
-          return isDriverMatch && (status == 'active' || status == 'completed');
-        }).toList();
-      } else if (filter == 'pending') {
-        // Pending category: Open to all drivers
-        return allShipments
-            .where((s) => s.status.trim().toLowerCase() == 'pending')
-            .toList();
+        return list;
       } else {
-        // Active or Completed category: Strictly for the driver's UID
-        return allShipments.where((s) {
-          return (s.driverId ?? '').trim() == currentDriverId.trim() && 
-                 s.status.trim().toLowerCase() == filter;
-        }).toList();
+        return list.where((s) => s.status.trim().toLowerCase() == filter).toList();
       }
     });
   }
