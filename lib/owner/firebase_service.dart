@@ -376,6 +376,9 @@ class FirebaseService {
               bgColor = const Color(0xFFE0F2FE);
             }
 
+            final String desc = data['description'] ?? 'Sri Lanka Customs corridor telemetry alert logged for ${data['containerId'] ?? 'container'}.';
+            final String sev = data['severity'] ?? (lowerCat == 'security' || (data['title'] ?? '').toString().toLowerCase().contains('tamper') ? 'critical' : (lowerCat == 'battery' ? 'warning' : 'info'));
+
             return AlertItem(
               id: doc.id,
               title: data['title'] ?? 'Alert Notification',
@@ -386,6 +389,11 @@ class FirebaseService {
               icon: icon,
               iconColor: iconColor,
               bgColor: bgColor,
+              description: desc,
+              severity: sev,
+              isRead: data['isRead'] ?? true,
+              isoContainerNo: data['isoContainerNo'],
+              location: data['location'],
             );
           }).toList();
 
@@ -419,13 +427,33 @@ class FirebaseService {
 
   List<AlertItem> _filterSampleAlerts({String category = 'All', String? ownerEmail}) {
     final cleanEmail = ownerEmail?.trim().toLowerCase();
-    return AlertItem.sampleAlerts.where((a) {
-      final matchesCat = (category == 'All' || a.category.toLowerCase() == category.toLowerCase());
+
+    // 1. Get sample alerts matching owner or default
+    List<AlertItem> matched = AlertItem.sampleAlerts.where((a) {
       final matchesOwner = (cleanEmail == null ||
           cleanEmail.isEmpty ||
           a.ownerEmail.toLowerCase() == cleanEmail);
-      return matchesCat && matchesOwner;
+      return matchesOwner;
     }).toList();
+
+    // 2. If no sample alerts directly match this owner (e.g. newly registered user or custom company),
+    // get containers for this owner and dynamically generate contextual alerts!
+    if (matched.isEmpty) {
+      final userContainers = ContainerModel.sampleContainers.where((c) {
+        return cleanEmail == null || cleanEmail.isEmpty || c.ownerEmail.toLowerCase() == cleanEmail;
+      }).toList();
+      if (userContainers.isNotEmpty) {
+        matched = AlertItem.generateFromContainers(userContainers);
+      } else {
+        // Fallback to sample alerts for default Cargo Overseas
+        matched = AlertItem.sampleAlerts.where((a) => a.ownerEmail == 'owner@cargooverseas.lk').toList();
+      }
+    }
+
+    if (category != 'All') {
+      matched = matched.where((a) => a.category.toLowerCase() == category.toLowerCase()).toList();
+    }
+    return matched;
   }
 
   /// Trigger a live e-Seal Tamper or GPS update in Cloud Firestore (for testing/demo)

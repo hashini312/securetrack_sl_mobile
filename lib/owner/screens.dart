@@ -1204,11 +1204,14 @@ class DashboardScreen extends StatelessWidget {
                           ),
                           const SizedBox(width: 10),
                           Expanded(
-                            child: MetricCard(
-                              value: '$alertsCount',
-                              label: settings.tr('alerts'),
-                              backgroundColor: alertsCount > 0 ? const Color(0xFFFEE2E2) : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
-                              textColor: alertsCount > 0 ? const Color(0xFF991B1B) : textMuted,
+                            child: GestureDetector(
+                              onTap: () => onNavigateTab(2),
+                              child: MetricCard(
+                                value: '$alertsCount',
+                                label: settings.tr('alerts'),
+                                backgroundColor: alertsCount > 0 ? const Color(0xFFFEE2E2) : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
+                                textColor: alertsCount > 0 ? const Color(0xFF991B1B) : textMuted,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -2722,275 +2725,623 @@ class AlertsScreen extends StatefulWidget {
 
 class _AlertsScreenState extends State<AlertsScreen> {
   String _selectedCategory = 'All';
+  String _selectedSeverity = 'All';
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
 
   final List<String> _categories = ['All', 'Security', 'Location', 'Battery'];
+  final List<String> _severities = ['All', 'Critical', 'Warning', 'Normal'];
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final settings = AppSettingsController.instance;
+    final currentUser = ApiService.instance.currentUser;
+    final cleanEmail = currentUser.email.trim().toLowerCase();
 
     return ListenableBuilder(
       listenable: settings,
       builder: (context, _) {
         final isDark = settings.isDarkMode;
         final bgColor = isDark ? const Color(0xFF0F172A) : AppColors.background;
-        final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFF1F5F9);
+        final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+        final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+        final textColor = isDark ? Colors.white : AppColors.textDark;
+        final textMuted = isDark ? const Color(0xFF94A3B8) : AppColors.textMedium;
 
         return Scaffold(
           backgroundColor: bgColor,
           body: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Top Title with Bell Icon & Export Report Action
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
+            child: StreamBuilder<List<ContainerModel>>(
+              stream: FirebaseService.instance.getContainersStream(
+                ownerEmail: currentUser.email,
+                company: currentUser.company,
+              ),
+              initialData: ContainerModel.sampleContainers
+                      .where((c) => c.ownerEmail.toLowerCase() == cleanEmail)
+                      .toList()
+                      .isNotEmpty
+                  ? ContainerModel.sampleContainers
+                      .where((c) => c.ownerEmail.toLowerCase() == cleanEmail)
+                      .toList()
+                  : ContainerModel.sampleContainers,
+              builder: (context, containerSnap) {
+                final userContainers = containerSnap.data ?? ContainerModel.sampleContainers;
+
+                return StreamBuilder<List<AlertItem>>(
+                  stream: FirebaseService.instance.getAlertsStream(
+                    category: 'All', // Fetch all to calculate category counts accurately
+                    ownerEmail: currentUser.email,
+                  ),
+                  initialData: AlertItem.sampleAlerts.where((alert) {
+                    return cleanEmail.isEmpty ||
+                        alert.ownerEmail.toLowerCase() == cleanEmail ||
+                        alert.ownerEmail.toLowerCase() == 'owner@cargooverseas.lk';
+                  }).toList(),
+                  builder: (context, alertSnap) {
+                    // Aggregate alerts from Stream + active Containers + Fallbacks
+                    final Map<String, AlertItem> alertMap = {};
+
+                    // 1. Contextual alerts derived directly from active containers
+                    final containerAlerts = AlertItem.generateFromContainers(userContainers);
+                    for (final a in containerAlerts) {
+                      alertMap[a.id] = a;
+                    }
+
+                    // 2. Stream alerts (Firestore real-time incidents)
+                    if (alertSnap.hasData && alertSnap.data != null) {
+                      for (final a in alertSnap.data!) {
+                        alertMap[a.id] = a;
+                      }
+                    }
+
+                    // 3. Fallback alerts from sampleAlerts
+                    for (final a in AlertItem.sampleAlerts) {
+                      final matchesOwner = cleanEmail.isEmpty ||
+                          a.ownerEmail.toLowerCase() == cleanEmail ||
+                          a.ownerEmail.toLowerCase() == 'owner@cargooverseas.lk';
+                      if (matchesOwner && !alertMap.containsKey(a.id)) {
+                        alertMap[a.id] = a;
+                      }
+                    }
+
+                    final List<AlertItem> allAlerts = alertMap.values.toList();
+
+                    // Calculate category counts
+                    final int allCount = allAlerts.length;
+                    final int secCount = allAlerts.where((a) => a.category.toLowerCase() == 'security').length;
+                    final int locCount = allAlerts.where((a) => a.category.toLowerCase() == 'location').length;
+                    final int batCount = allAlerts.where((a) => a.category.toLowerCase() == 'battery').length;
+
+                    final Map<String, int> counts = {
+                      'All': allCount,
+                      'Security': secCount,
+                      'Location': locCount,
+                      'Battery': batCount,
+                    };
+
+                    // Check for critical alerts
+                    final criticalAlerts = allAlerts.where((a) => a.severity.toLowerCase() == 'critical').toList();
+
+                    // Filter list by selected category, severity, and search query
+                    List<AlertItem> displayedAlerts = allAlerts.where((alert) {
+                      // Category Filter
+                      if (_selectedCategory != 'All' &&
+                          alert.category.toLowerCase() != _selectedCategory.toLowerCase()) {
+                        return false;
+                      }
+
+                      // Severity Filter
+                      if (_selectedSeverity != 'All') {
+                        if (_selectedSeverity == 'Critical' && alert.severity.toLowerCase() != 'critical') {
+                          return false;
+                        }
+                        if (_selectedSeverity == 'Warning' && alert.severity.toLowerCase() != 'warning') {
+                          return false;
+                        }
+                        if (_selectedSeverity == 'Normal' && alert.severity.toLowerCase() != 'info') {
+                          return false;
+                        }
+                      }
+
+                      // Search Query Filter
+                      if (_searchQuery.isNotEmpty) {
+                        final q = _searchQuery.toLowerCase();
+                        final matchesTitle = alert.title.toLowerCase().contains(q);
+                        final matchesContainer = alert.containerId.toLowerCase().contains(q);
+                        final matchesIso = (alert.isoContainerNo ?? '').toLowerCase().contains(q);
+                        final matchesDesc = alert.description.toLowerCase().contains(q);
+                        final matchesLoc = (alert.location ?? '').toLowerCase().contains(q);
+                        if (!matchesTitle && !matchesContainer && !matchesIso && !matchesDesc && !matchesLoc) {
+                          return false;
+                        }
+                      }
+
+                      return true;
+                    }).toList();
+
+                    // Sort: Critical first, then Warning, then Info
+                    displayedAlerts.sort((a, b) {
+                      int score(AlertItem item) {
+                        if (item.severity.toLowerCase() == 'critical') return 3;
+                        if (item.severity.toLowerCase() == 'warning') return 2;
+                        return 1;
+                      }
+                      return score(b).compareTo(score(a));
+                    });
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(
-                            Icons.notifications_active_outlined,
-                            color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
-                            size: 26,
-                          ),
-                          const SizedBox(width: 10),
-                          Text(
-                            settings.tr('alerts'),
-                            style: GoogleFonts.poppins(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: isDark ? Colors.white : AppColors.primaryBlue,
-                            ),
-                          ),
-                        ],
-                      ),
-                      InkWell(
-                        onTap: () {
-                          showDialog(
-                            context: context,
-                            builder: (ctx) => AlertDialog(
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                              backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-                              title: Row(
+                          // Top Bar: Title + PDF Export Button
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
                                 children: [
-                                  const Icon(Icons.picture_as_pdf_rounded, color: AppColors.primaryBlue, size: 24),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Security Audit Report',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: isDark ? Colors.white : AppColors.textDark,
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: isDark
+                                          ? const Color(0xFF1E3A8A).withValues(alpha: 0.3)
+                                          : const Color(0xFFE0EDFB),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Icon(
+                                      Icons.notifications_active_rounded,
+                                      color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
+                                      size: 22,
                                     ),
                                   ),
-                                ],
-                              ),
-                              content: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Sri Lanka Customs Compliance Audit Log',
-                                    style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primaryBlue),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    '• Export Format: Official Security Incident Log (PDF)\n• Importer: ${ApiService.instance.currentUser.company}\n• Verified By: Electronic Cargo Tracking System (ECTS)\n• Date Range: Active Transit Corridor Trips',
-                                    style: GoogleFonts.poppins(fontSize: 12, color: isDark ? const Color(0xFF94A3B8) : AppColors.textMedium, height: 1.4),
-                                  ),
-                                ],
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(ctx),
-                                  child: const Text('Close'),
-                                ),
-                                ElevatedButton.icon(
-                                  onPressed: () {
-                                    Navigator.pop(ctx);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Security Incident Audit Report (PDF) downloaded successfully!'),
-                                        backgroundColor: AppColors.successGreen,
+                                  const SizedBox(width: 10),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        settings.tr('alerts'),
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          color: textColor,
+                                        ),
                                       ),
-                                    );
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.primaryBlue,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                      Text(
+                                        'Sri Lanka Customs ECTS Incident Monitor',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 10.5,
+                                          color: textMuted,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  icon: const Icon(Icons.download, size: 16, color: Colors.white),
-                                  label: const Text('Download PDF', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                        borderRadius: BorderRadius.circular(10),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: isDark ? const Color(0xFF334155) : const Color(0xFFE0EDFB),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: isDark ? const Color(0xFF475569) : AppColors.primaryBlue.withValues(alpha: 0.2)),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.description_outlined, size: 14, color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Audit Report',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
+                                ],
+                              ),
+                              InkWell(
+                                onTap: () => _showAuditReportModal(context, isDark),
+                                borderRadius: BorderRadius.circular(10),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: isDark ? const Color(0xFF334155) : const Color(0xFFE0EDFB),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: isDark
+                                          ? const Color(0xFF475569)
+                                          : AppColors.primaryBlue.withValues(alpha: 0.2),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.description_outlined,
+                                        size: 14,
+                                        color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Audit Report',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
+                          const SizedBox(height: 14),
 
-                  // Filter Category Chips: All, Security, Location, Battery
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: _categories.map((category) {
-                        final bool isSelected = _selectedCategory == category;
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 10),
-                          child: GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _selectedCategory = category;
-                              });
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? AppColors.primaryBlue
-                                    : (isDark ? const Color(0xFF1E293B) : const Color(0xFFE0EDFB)),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: isSelected
-                                      ? AppColors.primaryBlue
-                                      : (isDark ? const Color(0xFF334155) : Colors.transparent),
-                                ),
-                              ),
-                              child: Text(
-                                category,
-                                style: GoogleFonts.poppins(
-                                  fontSize: 12,
-                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                                  color: isSelected
-                                      ? Colors.white
-                                      : (isDark ? const Color(0xFF94A3B8) : AppColors.primaryBlue),
-                                ),
+                          // Search Bar
+                          Container(
+                            decoration: BoxDecoration(
+                              color: cardBg,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: borderColor),
+                            ),
+                            child: TextField(
+                              controller: _searchController,
+                              onChanged: (val) {
+                                setState(() {
+                                  _searchQuery = val.trim();
+                                });
+                              },
+                              style: GoogleFonts.poppins(fontSize: 13, color: textColor),
+                              decoration: InputDecoration(
+                                hintText: 'Search container, CUSDEC, or incident...',
+                                hintStyle: GoogleFonts.poppins(fontSize: 12, color: textMuted),
+                                prefixIcon: Icon(Icons.search, size: 20, color: textMuted),
+                                suffixIcon: _searchQuery.isNotEmpty
+                                    ? IconButton(
+                                        icon: const Icon(Icons.clear, size: 18),
+                                        onPressed: () {
+                                          _searchController.clear();
+                                          setState(() {
+                                            _searchQuery = '';
+                                          });
+                                        },
+                                      )
+                                    : null,
+                                border: InputBorder.none,
+                                contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
                               ),
                             ),
                           ),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
+                          const SizedBox(height: 12),
 
-                  // Alerts List
-                  Expanded(
-                    child: StreamBuilder<List<AlertItem>>(
-                      stream: FirebaseService.instance.getAlertsStream(
-                        category: _selectedCategory,
-                        ownerEmail: ApiService.instance.currentUser.email,
-                      ),
-                      initialData: AlertItem.sampleAlerts.where((alert) {
-                        final matchesCat = (_selectedCategory == 'All' || alert.category.toLowerCase() == _selectedCategory.toLowerCase());
-                        final matchesOwner = alert.ownerEmail.toLowerCase() == ApiService.instance.currentUser.email.toLowerCase();
-                        return matchesCat && matchesOwner;
-                      }).toList(),
-                      builder: (context, snapshot) {
-                        final currentUserEmail = ApiService.instance.currentUser.email.trim().toLowerCase();
-                        
-                        // 1. Get from stream if available and non-empty
-                        List<AlertItem> alerts = [];
-                        if (snapshot.hasData && snapshot.data != null && snapshot.data!.isNotEmpty) {
-                          alerts = snapshot.data!;
-                        } else {
-                          // 2. Fallback to sampleAlerts
-                          alerts = AlertItem.sampleAlerts.where((alert) {
-                            final matchesCat = (_selectedCategory == 'All' || alert.category.toLowerCase() == _selectedCategory.toLowerCase());
-                            final matchesOwner = currentUserEmail.isEmpty || 
-                                                 alert.ownerEmail.toLowerCase() == currentUserEmail ||
-                                                 alert.ownerEmail.toLowerCase() == 'owner@cargooverseas.lk';
-                            return matchesCat && matchesOwner;
-                          }).toList();
-                        }
-
-                        // 3. Guaranteed safety fallback: If still empty, show all alerts for this owner
-                        if (alerts.isEmpty) {
-                          alerts = AlertItem.sampleAlerts.where((alert) {
-                            return alert.ownerEmail.toLowerCase() == currentUserEmail ||
-                                   alert.ownerEmail.toLowerCase() == 'owner@cargooverseas.lk';
-                          }).toList();
-                        }
-
-                        if (alerts.isEmpty) {
-                          return Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(24.0),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
+                          // Critical Incident Alert Banner (if any)
+                          if (criticalAlerts.isNotEmpty) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: isDark ? const Color(0xFF450A0A) : const Color(0xFFFEF2F2),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFFDC2626).withValues(alpha: 0.5)),
+                              ),
+                              child: Row(
                                 children: [
-                                  Icon(Icons.notifications_off_outlined, size: 48, color: isDark ? const Color(0xFF64748B) : AppColors.textLight),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    'No alerts in $_selectedCategory',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w500,
-                                      color: isDark ? const Color(0xFF94A3B8) : AppColors.textMuted,
+                                  const Icon(Icons.warning_rounded, color: Color(0xFFDC2626), size: 22),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      '${criticalAlerts.length} Critical Alert(s) require Sri Lanka Customs review.',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: isDark ? const Color(0xFFFCA5A5) : const Color(0xFF991B1B),
+                                      ),
+                                    ),
+                                  ),
+                                  GestureDetector(
+                                    onTap: () {
+                                      setState(() {
+                                        _selectedSeverity = 'Critical';
+                                      });
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFDC2626),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        'Filter',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                          );
-                        }
-                        return ListView.separated(
-                          itemCount: alerts.length,
-                          separatorBuilder: (context, index) => Divider(
-                            color: borderColor,
-                            height: 1,
-                          ),
-                          itemBuilder: (context, index) {
-                            final alert = alerts[index];
-                            return AlertItemCard(
-                              alert: alert,
-                              onTap: () {
-                                final matchedContainer = ContainerModel.sampleContainers.firstWhere(
-                                  (c) => c.id == alert.containerId,
-                                  orElse: () => ContainerModel.sampleContainers.first,
+                            const SizedBox(height: 12),
+                          ],
+
+                          // Category Chips with Live Count Badges
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: _categories.map((category) {
+                                final bool isSelected = _selectedCategory == category;
+                                final int count = counts[category] ?? 0;
+
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      setState(() {
+                                        _selectedCategory = category;
+                                      });
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                                      decoration: BoxDecoration(
+                                        color: isSelected
+                                            ? AppColors.primaryBlue
+                                            : (isDark ? const Color(0xFF1E293B) : const Color(0xFFE0EDFB)),
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(
+                                          color: isSelected
+                                              ? AppColors.primaryBlue
+                                              : (isDark ? const Color(0xFF334155) : Colors.transparent),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            category,
+                                            style: GoogleFonts.poppins(
+                                              fontSize: 12,
+                                              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                              color: isSelected
+                                                  ? Colors.white
+                                                  : (isDark ? const Color(0xFF94A3B8) : AppColors.primaryBlue),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: isSelected
+                                                  ? Colors.white.withValues(alpha: 0.25)
+                                                  : (isDark ? const Color(0xFF334155) : const Color(0xFFBFDBFE)),
+                                              borderRadius: BorderRadius.circular(10),
+                                            ),
+                                            child: Text(
+                                              '$count',
+                                              style: GoogleFonts.poppins(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
+                                                color: isSelected
+                                                    ? Colors.white
+                                                    : (isDark ? Colors.white70 : AppColors.primaryBlue),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
                                 );
-                                _showAlertDetails(context, alert, matchedContainer, isDark);
-                              },
-                            );
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
+                              }).toList(),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+
+                          // Severity Filter Chips: All, Critical, Warning, Normal
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: _severities.map((sev) {
+                                final isSelected = _selectedSeverity == sev;
+                                Color activeColor = AppColors.primaryBlue;
+                                if (sev == 'Critical') activeColor = const Color(0xFFDC2626);
+                                if (sev == 'Warning') activeColor = const Color(0xFFD97706);
+                                if (sev == 'Normal') activeColor = const Color(0xFF16A34A);
+
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 6),
+                                  child: ChoiceChip(
+                                    label: Text(
+                                      sev == 'All' ? 'All Severities' : sev,
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 11,
+                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                        color: isSelected
+                                            ? Colors.white
+                                            : (isDark ? const Color(0xFF94A3B8) : AppColors.textMedium),
+                                      ),
+                                    ),
+                                    selected: isSelected,
+                                    selectedColor: activeColor,
+                                    backgroundColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    side: BorderSide(
+                                      color: isSelected
+                                          ? activeColor
+                                          : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+                                    ),
+                                    onSelected: (_) {
+                                      setState(() {
+                                        _selectedSeverity = sev;
+                                      });
+                                    },
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+
+                          // Alerts List Area
+                          Expanded(
+                            child: displayedAlerts.isEmpty
+                                ? Center(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(24.0),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(16),
+                                            decoration: BoxDecoration(
+                                              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: Icon(
+                                              Icons.notifications_off_outlined,
+                                              size: 40,
+                                              color: textMuted,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 14),
+                                          Text(
+                                            'No alerts match your filter criteria',
+                                            style: GoogleFonts.poppins(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.bold,
+                                              color: textColor,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            'All containers in $_selectedCategory are moving normally within transit parameters.',
+                                            textAlign: TextAlign.center,
+                                            style: GoogleFonts.poppins(
+                                              fontSize: 12,
+                                              color: textMuted,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 16),
+                                          OutlinedButton.icon(
+                                            onPressed: () {
+                                              setState(() {
+                                                _selectedCategory = 'All';
+                                                _selectedSeverity = 'All';
+                                                _searchQuery = '';
+                                                _searchController.clear();
+                                              });
+                                            },
+                                            icon: const Icon(Icons.refresh, size: 16),
+                                            label: const Text('Reset All Filters'),
+                                            style: OutlinedButton.styleFrom(
+                                              foregroundColor:
+                                                  isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
+                                              side: BorderSide(
+                                                color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
+                                              ),
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  )
+                                : ListView.builder(
+                                    itemCount: displayedAlerts.length,
+                                    physics: const BouncingScrollPhysics(),
+                                    itemBuilder: (context, index) {
+                                      final alert = displayedAlerts[index];
+                                      final matchedContainer = userContainers.firstWhere(
+                                        (c) => c.id == alert.containerId,
+                                        orElse: () => userContainers.first,
+                                      );
+
+                                      return AlertItemCard(
+                                        alert: alert,
+                                        onTap: () {
+                                          _showAlertDetails(context, alert, matchedContainer, isDark);
+                                        },
+                                        onTrack: () {
+                                          Navigator.of(context).pushNamed(
+                                            '/live-tracking',
+                                            arguments: matchedContainer,
+                                          );
+                                        },
+                                        onViewContainer: () {
+                                          Navigator.of(context).pushNamed(
+                                            '/container-details',
+                                            arguments: matchedContainer,
+                                          );
+                                        },
+                                      );
+                                    },
+                                  ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+              },
             ),
           ),
         );
       },
+    );
+  }
+
+  void _showAuditReportModal(BuildContext context, bool isDark) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+        title: Row(
+          children: [
+            const Icon(Icons.picture_as_pdf_rounded, color: AppColors.primaryBlue, size: 24),
+            const SizedBox(width: 8),
+            Text(
+              'Security Audit Report',
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : AppColors.textDark,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Sri Lanka Customs Compliance Audit Log',
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: AppColors.primaryBlue,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '• Export Format: Official Security Incident Log (PDF)\n• Importer: ${ApiService.instance.currentUser.company}\n• Verified By: Electronic Cargo Tracking System (ECTS)\n• Date Range: Active Transit Corridor Trips',
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                color: isDark ? const Color(0xFF94A3B8) : AppColors.textMedium,
+                height: 1.4,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Security Incident Audit Report (PDF) downloaded successfully!'),
+                  backgroundColor: AppColors.successGreen,
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryBlue,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            icon: const Icon(Icons.download, size: 16, color: Colors.white),
+            label: const Text('Download PDF', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -3001,8 +3352,15 @@ class _AlertsScreenState extends State<AlertsScreen> {
     final mutedCol = isDark ? const Color(0xFF94A3B8) : AppColors.textMuted;
     final innerBg = isDark ? const Color(0xFF0F172A) : AppColors.background;
 
+    final isCritical = alert.severity.toLowerCase() == 'critical';
+    final isWarning = alert.severity.toLowerCase() == 'warning';
+    final Color statusColor = isCritical
+        ? const Color(0xFFDC2626)
+        : (isWarning ? const Color(0xFFD97706) : const Color(0xFF0284C7));
+
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         padding: const EdgeInsets.all(22),
@@ -3028,30 +3386,53 @@ class _AlertsScreenState extends State<AlertsScreen> {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: isDark ? alert.bgColor.withValues(alpha: 0.25) : alert.bgColor,
-                    shape: BoxShape.circle,
+                    borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Icon(alert.icon, color: alert.iconColor, size: 24),
+                  child: Icon(alert.icon, color: alert.iconColor, size: 26),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        alert.title,
-                        style: GoogleFonts.poppins(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          color: textCol,
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              alert.title,
+                              style: GoogleFonts.poppins(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: textCol,
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: statusColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: statusColor.withValues(alpha: 0.4)),
+                            ),
+                            child: Text(
+                              alert.severity.toUpperCase(),
+                              style: GoogleFonts.poppins(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: statusColor,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
+                      const SizedBox(height: 2),
                       Text(
-                        'Container ${alert.containerId} • ${alert.timestamp}',
+                        'Container ${container.isoContainerNo} • ${alert.timestamp}',
                         style: GoogleFonts.poppins(
-                          fontSize: 11,
+                          fontSize: 11.5,
                           color: mutedCol,
                         ),
                       ),
@@ -3061,24 +3442,49 @@ class _AlertsScreenState extends State<AlertsScreen> {
               ],
             ),
             const SizedBox(height: 16),
+
+            // Incident Description
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: innerBg,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: isDark ? const Color(0xFF334155) : Colors.transparent),
+                border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
               ),
-              child: Text(
-                'High-priority security telemetry verified by Sri Lanka Customs gateway. Container is actively being tracked.',
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  color: isDark ? const Color(0xFFE2E8F0) : AppColors.textMedium,
-                  height: 1.35,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Incident Telemetry Log',
+                    style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryBlue),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    alert.description.isNotEmpty
+                        ? alert.description
+                        : 'Sri Lanka Customs electronic cargo tracking telemetry logged for container ${container.isoContainerNo}.',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12.5,
+                      color: isDark ? const Color(0xFFE2E8F0) : AppColors.textMedium,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '📍 Corridor Location: ${alert.location ?? container.currentLocation}\n🔒 e-Seal ID: ${container.sealId} (${container.sealStatus})\n🔋 IoT Battery: ${container.batteryLevel}% | ⚡ Speed: ${container.speed} km/h',
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      color: mutedCol,
+                      height: 1.45,
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 20),
+
+            // Navigation Actions
             Row(
               children: [
                 Expanded(

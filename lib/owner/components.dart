@@ -305,84 +305,283 @@ class ContainerItemCard extends StatelessWidget {
   }
 }
 
-/// Alert Notification Card
+/// Alert Notification Card with Sri Lanka Customs ECTS Telemetry Badges
 class AlertItemCard extends StatelessWidget {
   final AlertItem alert;
   final VoidCallback? onTap;
+  final VoidCallback? onTrack;
+  final VoidCallback? onViewContainer;
 
   const AlertItemCard({
     super.key,
     required this.alert,
     this.onTap,
+    this.onTrack,
+    this.onViewContainer,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+    final titleColor = isDark ? Colors.white : AppColors.textDark;
+    final descColor = isDark ? const Color(0xFFCBD5E1) : AppColors.textMedium;
+    final subtextColor = isDark ? const Color(0xFF94A3B8) : AppColors.textLight;
 
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Row(
-          children: [
-            // Circle Icon
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: isDark ? alert.bgColor.withValues(alpha: 0.25) : alert.bgColor,
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Icon(
-                  alert.icon,
-                  color: alert.iconColor,
-                  size: 24,
+    // Severity styling
+    final isCritical = alert.severity.toLowerCase() == 'critical';
+    final isWarning = alert.severity.toLowerCase() == 'warning';
+
+    final Color statusColor = isCritical
+        ? const Color(0xFFDC2626)
+        : (isWarning ? const Color(0xFFD97706) : const Color(0xFF0284C7));
+
+    final Color badgeBg = isCritical
+        ? (isDark ? const Color(0xFF7F1D1D).withValues(alpha: 0.35) : const Color(0xFFFEE2E2))
+        : (isWarning
+            ? (isDark ? const Color(0xFF78350F).withValues(alpha: 0.35) : const Color(0xFFFEF3C7))
+            : (isDark ? const Color(0xFF0C4A6E).withValues(alpha: 0.35) : const Color(0xFFE0F2FE)));
+
+    final String severityLabel = isCritical
+        ? 'CRITICAL'
+        : (isWarning ? 'WARNING' : 'ECTS INFO');
+
+    final String displayContainer = alert.isoContainerNo != null && alert.isoContainerNo!.isNotEmpty
+        ? '${alert.isoContainerNo} (${alert.containerId})'
+        : alert.containerId;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isCritical
+              ? const Color(0xFFEF4444).withValues(alpha: 0.6)
+              : borderColor,
+          width: isCritical ? 1.5 : 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Top Row: Icon + Title + Severity Pill
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: isDark ? alert.bgColor.withValues(alpha: 0.25) : alert.bgColor,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: alert.iconColor.withValues(alpha: 0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Center(
+                        child: Icon(
+                          alert.icon,
+                          color: alert.iconColor,
+                          size: 22,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  alert.title,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: titleColor,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: badgeBg,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: statusColor.withValues(alpha: 0.4), width: 0.8),
+                                ),
+                                child: Text(
+                                  severityLabel,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: statusColor,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 3),
+                          Row(
+                            children: [
+                              Icon(Icons.schedule, size: 12, color: subtextColor),
+                              const SizedBox(width: 4),
+                              Text(
+                                alert.timestamp,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: subtextColor,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                width: 4,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: subtextColor,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                alert.category,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ),
-            const SizedBox(width: 14),
-            // Text details
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+
+                // Description
+                if (alert.description.isNotEmpty) ...[
+                  const SizedBox(height: 10),
                   Text(
-                    alert.title,
+                    alert.description,
                     style: GoogleFonts.poppins(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    alert.containerId,
-                    style: GoogleFonts.poppins(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: isDark ? Colors.white : AppColors.textMedium,
-                    ),
-                  ),
-                  const SizedBox(height: 1),
-                  Text(
-                    alert.timestamp,
-                    style: GoogleFonts.poppins(
-                      fontSize: 10,
-                      color: isDark ? const Color(0xFF94A3B8) : AppColors.textLight,
+                      fontSize: 12,
+                      color: descColor,
+                      height: 1.35,
                     ),
                   ),
                 ],
-              ),
+
+                const SizedBox(height: 10),
+
+                // Badges Row: Container ID + Location
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: borderColor),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.inventory_2_outlined, size: 14, color: AppColors.primaryBlue),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          displayContainer,
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white : AppColors.textDark,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (alert.location != null && alert.location!.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        const Icon(Icons.location_on_outlined, size: 14, color: Color(0xFF0284C7)),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            alert.location!,
+                            style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              color: isDark ? const Color(0xFF94A3B8) : AppColors.textMedium,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+
+                // Quick Action Buttons
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    if (onTrack != null)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: onTrack,
+                          icon: const Icon(Icons.navigation_outlined, size: 14),
+                          label: Text(
+                            'Track Live',
+                            style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.bold),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
+                            side: BorderSide(
+                              color: isDark ? const Color(0xFF60A5FA).withValues(alpha: 0.5) : AppColors.primaryBlue.withValues(alpha: 0.4),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                        ),
+                      ),
+                    if (onTrack != null) const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: onViewContainer ?? onTap,
+                        icon: const Icon(Icons.info_outline, size: 14, color: Colors.white),
+                        label: Text(
+                          'View Details',
+                          style: GoogleFonts.poppins(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primaryBlue,
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            // Chevron arrow
-            Icon(
-              Icons.chevron_right,
-              color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
-              size: 20,
-            ),
-          ],
+          ),
         ),
       ),
     );
