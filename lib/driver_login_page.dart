@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'services/session_service.dart';
 
 class DriverLoginPage extends StatefulWidget {
   const DriverLoginPage({super.key});
@@ -73,7 +74,9 @@ class _DriverLoginPageState extends State<DriverLoginPage> {
 
       if (userDoc.exists) {
         final data = userDoc.data() as Map<String, dynamic>?;
-        if (data != null && data['role'] == 'DRIVER') {
+        final String role = (data?['role'] ?? '').toString().toUpperCase();
+        if (role == 'DRIVER') {
+          await SessionService.recordLogin();
           _showMessage("Logged in successfully!", Colors.green);
 
           await _saveDriverFcmToken(uid);
@@ -90,7 +93,7 @@ class _DriverLoginPageState extends State<DriverLoginPage> {
       }
 
       await FirebaseAuth.instance.signOut();
-      _showMessage("This account is not registered as a driver!", Colors.red);
+      _showMessage("This account is not registered as an authorized driver!", Colors.red);
 
     } on FirebaseAuthException catch (e) {
       String customErrorMessage;

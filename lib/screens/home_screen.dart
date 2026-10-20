@@ -32,7 +32,6 @@ class HomeScreen extends StatelessWidget {
           : null,
       builder: (context, snapshot) {
         String userName = FirebaseService.defaultDriverName;
-        String userRole = 'DRIVER';
         String vehicleNo = FirebaseService.defaultVehicleNo;
 
         if (snapshot.hasData && snapshot.data != null && snapshot.data!.exists) {
@@ -40,7 +39,6 @@ class HomeScreen extends StatelessWidget {
 
           if (userData != null) {
             userName = userData['fullName'] ?? userData['fullname'] ?? FirebaseService.defaultDriverName;
-            userRole = userData['role'] ?? 'DRIVER';
             vehicleNo = userData['vehicleNo'] ?? FirebaseService.defaultVehicleNo;
           }
         }
@@ -421,6 +419,7 @@ class HomeScreen extends StatelessWidget {
 
   Widget _buildPhoneRow(BuildContext context, String label, String rawNumber, String displayNumber, bool isDark) {
     return InkWell(
+      borderRadius: BorderRadius.circular(10),
       onTap: () async {
         final Uri launchUri = Uri(
           scheme: 'tel',
@@ -428,29 +427,73 @@ class HomeScreen extends StatelessWidget {
         );
         try {
           if (await canLaunchUrl(launchUri)) {
-            await launchUrl(launchUri);
+            await launchUrl(launchUri, mode: LaunchMode.externalApplication);
           } else {
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Could not launch phone dialer')),
-              );
-            }
+            await launchUrl(launchUri);
           }
-        } catch (_) {}
+        } catch (_) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Could not launch phone dialer')),
+            );
+          }
+        }
       },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 10.0),
+        margin: const EdgeInsets.only(bottom: 6),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E293B) : Colors.blue.shade50,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isDark ? Colors.blue.shade900 : Colors.blue.shade100,
+          ),
+        ),
         child: Row(
           children: [
-            const Icon(Icons.phone, size: 16, color: Colors.indigo),
-            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: const BoxDecoration(
+                color: Color(0xFF10B981),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.phone, size: 16, color: Colors.white),
+            ),
+            const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                '• $label: $displayNumber',
-                style: const TextStyle(
-                  color: Colors.blue,
-                  decoration: TextDecoration.underline,
-                  fontWeight: FontWeight.w500,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                    ),
+                  ),
+                  Text(
+                    displayNumber,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : const Color(0xFF1E3A8A),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF10B981),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                'CALL',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 11,
                 ),
               ),
             ),

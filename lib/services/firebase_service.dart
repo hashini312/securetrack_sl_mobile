@@ -1,5 +1,5 @@
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 import '../models/shipment_model.dart';
@@ -7,22 +7,22 @@ import '../models/shipment_model.dart';
 class FirebaseService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // Consistent vehicle details across the entire application
+  // Fallback Constants
   static const String defaultVehicleNo = 'WP-DA-4821';
-  static const String defaultDriverName = 'Saman Kumara';
+  static const String defaultDriverName = 'Driver';
   static const String defaultLicenseNo = 'B8392014';
   static const String defaultCompany = 'Customs Bonded Carrier Ltd';
   static const String defaultPhone = '+94 77 123 4567';
 
-  /// Complete Sri Lanka Customs Shipments Dataset with multiple examples for ALL categories
+  /// Customs Shipments Dataset
   static List<ShipmentModel> get allCustomsShipments => [
         // ACTIVE
         ShipmentModel(
-          id: 'shp_001',
+          id: 'SHP-2026-001',
           shipmentId: 'SHP-2026-001',
           containerId: 'CONT-001',
-          driverName: defaultDriverName,
-          vehicleNo: defaultVehicleNo,
+          driverName: 'Saman Kumara',
+          vehicleNo: 'WP-DD-6556',
           origin: 'Colombo Port',
           destination: 'Orugodawatta Main Yard',
           status: 'Active',
@@ -35,8 +35,8 @@ class FirebaseService {
           eta: 'Today, 4:30 PM',
           distance: '12 km',
           estimatedTime: '1h 15m',
-          startLatitude: 6.94,
-          startLongitude: 79.85,
+          startLatitude: 6.9400,
+          startLongitude: 79.8500,
           endLatitude: 6.9450,
           endLongitude: 79.8800,
           waypoints: const [
@@ -48,15 +48,15 @@ class FirebaseService {
           createdAt: DateTime.now().subtract(const Duration(hours: 2)),
         ),
         ShipmentModel(
-          id: 'shp_006',
-          shipmentId: 'SHP-2026-006',
-          containerId: 'CONT-006',
-          driverName: defaultDriverName,
-          vehicleNo: defaultVehicleNo,
-          origin: 'Colombo Port (SAGT Terminal)',
-          destination: 'Kelaniya Inland Container Depot',
+          id: 'SHP-2026-002',
+          shipmentId: 'SHP-2026-002',
+          containerId: 'CONT-002',
+          driverName: 'Amal Silva',
+          vehicleNo: 'WP-DD-3468',
+          origin: 'Colombo Port',
+          destination: 'Grayline I',
           status: 'Active',
-          assignedRoute: 'Kandy Road (A1) Transit Corridor',
+          assignedRoute: 'Colombo Port - Grayline I Corridor',
           sealNumber: 'SL-CUS-884920',
           iotDeviceId: 'ESP32-ST-0048',
           type: 'Standard 20ft Dry Box',
@@ -68,25 +68,24 @@ class FirebaseService {
           startLatitude: 6.9400,
           startLongitude: 79.8500,
           endLatitude: 6.9550,
-          endLongitude: 79.9150,
+          endLongitude: 79.8950,
           waypoints: const [
-            LatLng(6.9450, 79.8750),
-            LatLng(6.9500, 79.8950),
+            LatLng(6.9450, 79.8700),
           ],
           tamperStatus: 'Secure',
           geofenceStatus: 'Inside Corridor',
           createdAt: DateTime.now().subtract(const Duration(hours: 1)),
         ),
         ShipmentModel(
-          id: 'shp_007',
-          shipmentId: 'SHP-2026-007',
-          containerId: 'CONT-007',
-          driverName: defaultDriverName,
-          vehicleNo: defaultVehicleNo,
-          origin: 'Colombo Port (CICT Terminal)',
-          destination: 'Wattala Customs Bonded Yard',
+          id: 'SHP-2026-003',
+          shipmentId: 'SHP-2026-003',
+          containerId: 'CONT-003',
+          driverName: 'Nimal Bandara',
+          vehicleNo: 'WP-DA-4821',
+          origin: 'Colombo Port',
+          destination: 'Grayline II',
           status: 'Active',
-          assignedRoute: 'Negombo Road (A3) Transit Corridor',
+          assignedRoute: 'Colombo Port - Grayline II Corridor',
           sealNumber: 'SL-CUS-884925',
           iotDeviceId: 'ESP32-ST-0056',
           type: '40ft Refrigerated (Reefer)',
@@ -97,58 +96,25 @@ class FirebaseService {
           estimatedTime: '1h 00m',
           startLatitude: 6.9400,
           startLongitude: 79.8500,
-          endLatitude: 6.9850,
-          endLongitude: 79.8900,
+          endLatitude: 6.9650,
+          endLongitude: 79.9050,
           waypoints: const [
-            LatLng(6.9550, 79.8650),
-            LatLng(6.9700, 79.8800),
+            LatLng(6.9500, 79.8800),
           ],
           tamperStatus: 'Secure',
           geofenceStatus: 'Inside Corridor',
           createdAt: DateTime.now().subtract(const Duration(minutes: 45)),
         ),
         ShipmentModel(
-          id: 'shp_008',
-          shipmentId: 'SHP-2026-008',
-          containerId: 'CONT-008',
-          driverName: defaultDriverName,
-          vehicleNo: defaultVehicleNo,
-          origin: 'Grayline I Yard',
-          destination: 'Colombo Port (Terminal 2)',
+          id: 'SHP-2026-004',
+          shipmentId: 'SHP-2026-004',
+          containerId: 'CONT-004',
+          driverName: 'Kasun Perera',
+          vehicleNo: 'WP-DA-4821',
+          origin: 'Colombo Port',
+          destination: 'Orugodawatta Main Yard',
           status: 'Active',
-          assignedRoute: 'Colombo - Grayline I Yard',
-          sealNumber: 'SL-CUS-884931',
-          iotDeviceId: 'ESP32-ST-0062',
-          type: 'Standard 40ft High Cube',
-          weight: '19,200 kg',
-          cargoDescription: 'Electronic High-Tech Sensors & Components',
-          eta: 'Today, 5:45 PM',
-          distance: '34.5 km',
-          estimatedTime: '55 mins',
-          startLatitude: 7.1650,
-          startLongitude: 79.8850,
-          endLatitude: 6.9400,
-          endLongitude: 79.8500,
-          waypoints: const [
-            LatLng(7.0800, 79.8780),
-            LatLng(7.0000, 79.8700),
-          ],
-          tamperStatus: 'Secure',
-          geofenceStatus: 'Inside Corridor',
-          createdAt: DateTime.now().subtract(const Duration(hours: 3)),
-        ),
-
-        // PENDING
-        ShipmentModel(
-          id: 'shp_002',
-          shipmentId: 'SHP-2026-002',
-          containerId: 'CONT-002',
-          driverName: defaultDriverName,
-          vehicleNo: defaultVehicleNo,
-          origin: 'Colombo Port (JCT)',
-          destination: 'Peliyagoda Container Yard',
-          status: 'Pending',
-          assignedRoute: 'Port Access Highway - Peliyagoda Bypass',
+          assignedRoute: 'Colombo Port - Orugodawatta Main Yard',
           sealNumber: 'SL-CUS-884913',
           iotDeviceId: 'ESP32-ST-0045',
           type: 'Standard 20ft Dry Box',
@@ -159,148 +125,203 @@ class FirebaseService {
           estimatedTime: '45 mins',
           startLatitude: 6.9400,
           startLongitude: 79.8500,
-          endLatitude: 6.9690,
-          endLongitude: 79.8880,
+          endLatitude: 6.9450,
+          endLongitude: 79.8800,
           waypoints: const [
-            LatLng(6.9510, 79.8680),
-            LatLng(6.9620, 79.8790),
+            LatLng(6.9420, 79.8650),
           ],
           tamperStatus: 'Secure',
           geofenceStatus: 'Inside Corridor',
-          createdAt: DateTime.now().subtract(const Duration(hours: 4)),
+          createdAt: DateTime.now().subtract(const Duration(hours: 3)),
         ),
+
+        // PENDING
         ShipmentModel(
-          id: 'shp_003',
-          shipmentId: 'SHP-2026-003',
-          containerId: 'CONT-003',
-          driverName: defaultDriverName,
-          vehicleNo: defaultVehicleNo,
-          origin: 'Colombo Port (CICT)',
-          destination: 'Biyagama Free Trade Zone',
+          id: 'SHP-2026-005',
+          shipmentId: 'SHP-2026-005',
+          containerId: 'CONT-005',
+          driverName: 'Saman Kumara',
+          vehicleNo: 'WP-DD-6556',
+          origin: 'Colombo Port',
+          destination: 'Grayline I',
           status: 'Pending',
-          assignedRoute: 'Kelani Valley Corridor - Biyagama Link',
+          assignedRoute: 'Colombo Port - Grayline I Transit',
           sealNumber: 'SL-CUS-884914',
           iotDeviceId: 'ESP32-ST-0051',
           type: '40ft Refrigerated (Reefer)',
           weight: '21,000 kg',
           cargoDescription: 'Temperature-Controlled Essential Pharmaceuticals',
           eta: 'Tomorrow, 02:00 PM',
-          distance: '22 km',
-          estimatedTime: '1h 40m',
+          distance: '10.0 km',
+          estimatedTime: '50 mins',
           startLatitude: 6.9400,
           startLongitude: 79.8500,
-          endLatitude: 6.9444,
-          endLongitude: 79.9912,
+          endLatitude: 6.9550,
+          endLongitude: 79.8950,
           waypoints: const [
-            LatLng(6.9500, 79.8900),
-            LatLng(6.9480, 79.9400),
+            LatLng(6.9480, 79.8700),
           ],
           tamperStatus: 'Secure',
           geofenceStatus: 'Inside Corridor',
-          createdAt: DateTime.now().subtract(const Duration(hours: 5)),
+          createdAt: DateTime.now().subtract(const Duration(hours: 4)),
         ),
         ShipmentModel(
-          id: 'shp_009',
-          shipmentId: 'SHP-2026-009',
-          containerId: 'CONT-009',
-          driverName: defaultDriverName,
-          vehicleNo: defaultVehicleNo,
-          origin: 'Colombo Port (Terminal 1)',
-          destination: 'Kerawalapitiya Logistics Hub',
+          id: 'SHP-2026-006',
+          shipmentId: 'SHP-2026-006',
+          containerId: 'CONT-006',
+          driverName: 'Amal Silva',
+          vehicleNo: 'WP-DD-3468',
+          origin: 'Colombo Port',
+          destination: 'Grayline II',
           status: 'Pending',
-          assignedRoute: 'Outer Circular Expressway (E02) Link',
+          assignedRoute: 'Colombo Port - Grayline II Transit',
           sealNumber: 'SL-CUS-884940',
           iotDeviceId: 'ESP32-ST-0071',
           type: 'Standard 40ft High Cube',
           weight: '26,300 kg',
           cargoDescription: 'Solar Power Panels & Inverter Batteries',
           eta: 'Tomorrow, 11:00 AM',
-          distance: '16.5 km',
-          estimatedTime: '1h 10m',
+          distance: '11.5 km',
+          estimatedTime: '1h 05m',
           startLatitude: 6.9400,
           startLongitude: 79.8500,
-          endLatitude: 6.9920,
-          endLongitude: 79.8820,
+          endLatitude: 6.9650,
+          endLongitude: 79.9050,
           waypoints: const [
-            LatLng(6.9600, 79.8650),
-            LatLng(6.9800, 79.8750),
+            LatLng(6.9500, 79.8800),
           ],
           tamperStatus: 'Secure',
           geofenceStatus: 'Inside Corridor',
-          createdAt: DateTime.now().subtract(const Duration(hours: 6)),
+          createdAt: DateTime.now().subtract(const Duration(hours: 5)),
         ),
         ShipmentModel(
-          id: 'shp_010',
-          shipmentId: 'SHP-2026-010',
-          containerId: 'CONT-010',
-          driverName: defaultDriverName,
-          vehicleNo: defaultVehicleNo,
-          origin: 'Colombo Port (JCT)',
-          destination: 'Kandy Pallekele Customs Bonded Depot',
+          id: 'SHP-2026-012',
+          shipmentId: 'SHP-2026-012',
+          containerId: 'CONT-012',
+          driverName: 'Nimal Bandara',
+          vehicleNo: 'WP-DA-4821',
+          origin: 'Colombo Port',
+          destination: 'Grayline I',
           status: 'Pending',
-          assignedRoute: 'Central Expressway (E04) - A1 Corridor',
-          sealNumber: 'SL-CUS-884948',
-          iotDeviceId: 'ESP32-ST-0080',
+          assignedRoute: 'A6 - Ambepussa Transit Corridor',
+          sealNumber: 'SL-CUS-884895',
+          iotDeviceId: 'ESP32-ST-0012',
           type: 'Standard 40ft High Cube',
-          weight: '23,100 kg',
-          cargoDescription: 'Industrial Medical Equipment & Laboratory Gear',
-          eta: 'Oct 13, 10:00 AM',
-          distance: '118 km',
-          estimatedTime: '3h 15m',
+          weight: '27,000 kg',
+          cargoDescription: 'Export Refined Minerals & Industrial Silica',
+          eta: 'Delivered (Oct 05)',
+          distance: '260 km',
+          estimatedTime: '50 mins',
           startLatitude: 6.9400,
           startLongitude: 79.8500,
-          endLatitude: 7.2800,
-          endLongitude: 80.6800,
+          endLatitude: 6.9550,
+          endLongitude: 79.8950,
           waypoints: const [
-            LatLng(7.0500, 80.0500),
-            LatLng(7.1800, 80.3500),
+            LatLng(6.9450, 79.8700),
           ],
           tamperStatus: 'Secure',
           geofenceStatus: 'Inside Corridor',
-          createdAt: DateTime.now().subtract(const Duration(hours: 7)),
+          createdAt: DateTime.now().subtract(const Duration(days: 6)),
         ),
 
         // COMPLETED
         ShipmentModel(
-          id: 'shp_004',
-          shipmentId: 'SHP-2026-004',
-          containerId: 'CONT-004',
-          driverName: defaultDriverName,
-          vehicleNo: defaultVehicleNo,
-          origin: 'Katunayake EPZ Cargo Center',
-          destination: 'Colombo Port (Terminal 1)',
+          id: 'SHP-2026-007',
+          shipmentId: 'SHP-2026-007',
+          containerId: 'CONT-007',
+          driverName: 'Nimal Bandara',
+          vehicleNo: 'WP-DA-4821',
+          origin: 'Colombo Port',
+          destination: 'Orugodawatta Main Yard',
           status: 'Completed',
-          assignedRoute: 'Colombo - Katunayake Expressway (E03)',
+          assignedRoute: 'Colombo Port - Orugodawatta Main Yard',
           sealNumber: 'SL-CUS-884910',
           iotDeviceId: 'ESP32-ST-0038',
           type: 'Standard 40ft High Cube',
           weight: '15,800 kg',
           cargoDescription: 'Apparel Exports - Inspected & Cleared',
           eta: 'Delivered (Yesterday)',
-          distance: '34 km',
-          estimatedTime: '55 mins',
-          startLatitude: 7.1650,
-          startLongitude: 79.8850,
-          endLatitude: 6.9400,
-          endLongitude: 79.8500,
+          distance: '12 km',
+          estimatedTime: '1h 15m',
+          startLatitude: 6.9400,
+          startLongitude: 79.8500,
+          endLatitude: 6.9450,
+          endLongitude: 79.8800,
           waypoints: const [
-            LatLng(7.0800, 79.8780),
-            LatLng(7.0000, 79.8700),
+            LatLng(6.9420, 79.8650),
+          ],
+          tamperStatus: 'Secure',
+          geofenceStatus: 'Inside Corridor',
+          createdAt: DateTime.now().subtract(const Duration(hours: 6)),
+        ),
+        ShipmentModel(
+          id: 'SHP-2026-008',
+          shipmentId: 'SHP-2026-008',
+          containerId: 'CONT-008',
+          driverName: 'Kasun Perera',
+          vehicleNo: 'WP-DA-4821',
+          origin: 'Colombo Port',
+          destination: 'Grayline I',
+          status: 'Completed',
+          assignedRoute: 'Colombo Port - Grayline I Corridor',
+          sealNumber: 'SL-CUS-884908',
+          iotDeviceId: 'ESP32-ST-0022',
+          type: '40ft Heavy Duty Flat Rack',
+          weight: '28,700 kg',
+          cargoDescription: 'Heavy Industrial Harbour Maintenance Equipment',
+          eta: 'Delivered (Oct 08)',
+          distance: '9.8 km',
+          estimatedTime: '50 mins',
+          startLatitude: 6.9400,
+          startLongitude: 79.8500,
+          endLatitude: 6.9550,
+          endLongitude: 79.8950,
+          waypoints: const [
+            LatLng(6.9480, 79.8700),
+          ],
+          tamperStatus: 'Secure',
+          geofenceStatus: 'Inside Corridor',
+          createdAt: DateTime.now().subtract(const Duration(hours: 7)),
+        ),
+        ShipmentModel(
+          id: 'SHP-2026-009',
+          shipmentId: 'SHP-2026-009',
+          containerId: 'CONT-009',
+          driverName: 'Kasun Perera',
+          vehicleNo: 'WP-DA-4821',
+          origin: 'Colombo Port',
+          destination: 'Grayline I',
+          status: 'Completed',
+          assignedRoute: 'Colombo Port - Grayline I Corridor',
+          sealNumber: 'SL-CUS-884908',
+          iotDeviceId: 'ESP32-ST-0022',
+          type: '40ft Heavy Duty Flat Rack',
+          weight: '28,700 kg',
+          cargoDescription: 'Heavy Industrial Harbour Maintenance Equipment',
+          eta: 'Delivered (Oct 08)',
+          distance: '9.8 km',
+          estimatedTime: '50 mins',
+          startLatitude: 6.9400,
+          startLongitude: 79.8500,
+          endLatitude: 6.9550,
+          endLongitude: 79.8950,
+          waypoints: const [
+            LatLng(6.9480, 79.8700),
           ],
           tamperStatus: 'Secure',
           geofenceStatus: 'Inside Corridor',
           createdAt: DateTime.now().subtract(const Duration(days: 2)),
         ),
         ShipmentModel(
-          id: 'shp_005',
-          shipmentId: 'SHP-2026-005',
-          containerId: 'CONT-005',
-          driverName: defaultDriverName,
-          vehicleNo: defaultVehicleNo,
-          origin: 'Colombo Port (SAGT)',
-          destination: 'Hambantota International Port',
+          id: 'SHP-2026-010',
+          shipmentId: 'SHP-2026-010',
+          containerId: 'CONT-010',
+          driverName: 'Amal Silva',
+          vehicleNo: 'WP-DD-3468',
+          origin: 'Colombo Port',
+          destination: 'Grayline I',
           status: 'Completed',
-          assignedRoute: 'Southern Expressway (E01) Transit Corridor',
+          assignedRoute: 'Colombo Port - Grayline I Corridor',
           sealNumber: 'SL-CUS-884908',
           iotDeviceId: 'ESP32-ST-0022',
           type: '40ft Heavy Duty Flat Rack',
@@ -311,26 +332,25 @@ class FirebaseService {
           estimatedTime: '3h 30m',
           startLatitude: 6.9400,
           startLongitude: 79.8500,
-          endLatitude: 6.1200,
-          endLongitude: 81.1200,
+          endLatitude: 6.9550,
+          endLongitude: 79.8950,
           waypoints: const [
-            LatLng(6.5000, 80.0500),
-            LatLng(6.1500, 80.5000),
+            LatLng(6.9450, 79.8700),
           ],
           tamperStatus: 'Secure',
           geofenceStatus: 'Inside Corridor',
           createdAt: DateTime.now().subtract(const Duration(days: 3)),
         ),
         ShipmentModel(
-          id: 'shp_011',
+          id: 'SHP-2026-011',
           shipmentId: 'SHP-2026-011',
           containerId: 'CONT-011',
-          driverName: defaultDriverName,
-          vehicleNo: defaultVehicleNo,
-          origin: 'Colombo Port (CICT)',
-          destination: 'Seethawaka Export Processing Zone',
+          driverName: 'Saman Kumara',
+          vehicleNo: 'WP-DD-6556',
+          origin: 'Colombo Port',
+          destination: 'Orugodawatta Main Yard',
           status: 'Completed',
-          assignedRoute: 'High-Level Road (A4) Transit Corridor',
+          assignedRoute: 'Colombo Port - Orugodawatta Main Yard',
           sealNumber: 'SL-CUS-884902',
           iotDeviceId: 'ESP32-ST-0019',
           type: 'Standard 20ft Dry Box',
@@ -338,48 +358,18 @@ class FirebaseService {
           cargoDescription: 'Precision Electronic Machinery Components',
           eta: 'Delivered (Oct 07)',
           distance: '52 km',
-          estimatedTime: '1h 50m',
+          estimatedTime: '1h 15m',
           startLatitude: 6.9400,
           startLongitude: 79.8500,
-          endLatitude: 6.9500,
-          endLongitude: 80.2100,
+          endLatitude: 6.9450,
+          endLongitude: 79.8800,
           waypoints: const [
-            LatLng(6.9450, 79.9800),
-            LatLng(6.9480, 80.1200),
+            LatLng(6.9380, 79.8650),
+            LatLng(6.9420, 79.8720),
           ],
           tamperStatus: 'Secure',
           geofenceStatus: 'Inside Corridor',
           createdAt: DateTime.now().subtract(const Duration(days: 4)),
-        ),
-        ShipmentModel(
-          id: 'shp_012',
-          shipmentId: 'SHP-2026-012',
-          containerId: 'CONT-012',
-          driverName: defaultDriverName,
-          vehicleNo: defaultVehicleNo,
-          origin: 'Trincomalee Harbour Depot',
-          destination: 'Colombo Port (Terminal 2)',
-          status: 'Completed',
-          assignedRoute: 'A6 - Ambepussa Transit Corridor',
-          sealNumber: 'SL-CUS-884895',
-          iotDeviceId: 'ESP32-ST-0012',
-          type: 'Standard 40ft High Cube',
-          weight: '27,000 kg',
-          cargoDescription: 'Export Refined Minerals & Industrial Silica',
-          eta: 'Delivered (Oct 05)',
-          distance: '260 km',
-          estimatedTime: '5h 15m',
-          startLatitude: 8.5700,
-          startLongitude: 81.2300,
-          endLatitude: 6.9400,
-          endLongitude: 79.8500,
-          waypoints: const [
-            LatLng(8.0300, 80.7500),
-            LatLng(7.5000, 80.3500),
-          ],
-          tamperStatus: 'Secure',
-          geofenceStatus: 'Inside Corridor',
-          createdAt: DateTime.now().subtract(const Duration(days: 6)),
         ),
       ];
 
@@ -388,7 +378,7 @@ class FirebaseService {
         {
           'id': 'alert_001',
           'title': 'Smart Seal Tamper Alert - CONT-001',
-          'description': 'Dual-factor sensor trigger: Magnetic reed switch disengaged unexpectedly near Peliyagoda corridor.',
+          'description': 'Dual-factor sensor trigger: Magnetic reed switch disengaged unexpectedly near corridor.',
           'type': 'tamper',
           'priority': 'critical',
           'isRead': false,
@@ -397,7 +387,7 @@ class FirebaseService {
         {
           'id': 'alert_002',
           'title': 'Route Corridor Deviation Warning',
-          'description': 'Vehicle $defaultVehicleNo deviated 280m outside approved Port-Orugodawatte geofence corridor.',
+          'description': 'Vehicle deviated outside approved geofence corridor.',
           'type': 'deviation',
           'priority': 'high',
           'isRead': false,
@@ -406,7 +396,7 @@ class FirebaseService {
         {
           'id': 'alert_003',
           'title': 'Customs Speed Threshold Exceeded',
-          'description': 'Speed limit (60 km/h) exceeded on Kelani Bridge transit sector. Current: 68 km/h.',
+          'description': 'Speed limit (60 km/h) exceeded on transit sector.',
           'type': 'instruction',
           'priority': 'important',
           'isRead': false,
@@ -414,8 +404,8 @@ class FirebaseService {
         },
         {
           'id': 'alert_004',
-          'title': 'New Container Assigned: CONT-001',
-          'description': 'Inspector Bandara paired container CONT-001 with Smart Lock ESP32-ST-0042.',
+          'title': 'New Container Assigned',
+          'description': 'Inspector paired container successfully with Smart Lock.',
           'type': 'shipment',
           'priority': 'normal',
           'isRead': true,
@@ -424,7 +414,7 @@ class FirebaseService {
         {
           'id': 'alert_005',
           'title': 'Customs Checkpoint Directive',
-          'description': 'Mandatory security scan scheduled at Peliyagoda Gate 2 checkpoint before depot entry.',
+          'description': 'Mandatory security scan scheduled at gate checkpoint before depot entry.',
           'type': 'instruction',
           'priority': 'important',
           'isRead': true,
@@ -433,7 +423,7 @@ class FirebaseService {
         {
           'id': 'alert_006',
           'title': 'Delivery Confirmed & Seal Disarmed',
-          'description': 'Shipment SHP-2026-004 delivery logged and RFID seal unlocked by Inspector Wickrama.',
+          'description': 'Shipment delivery logged and RFID seal unlocked by Inspector.',
           'type': 'completed',
           'priority': 'normal',
           'isRead': true,
@@ -441,73 +431,134 @@ class FirebaseService {
         },
       ];
 
-  /// Seeds all 3 collections (shipments, users, alerts) with rich datasets
+  /// Clears existing collection and seeds exactly 12 shipments with fixed IDs & correct driver mappings
   static Future<void> seedAllCollections() async {
     try {
-      debugPrint('Initializing Firebase collections seeding...');
-      final user = FirebaseAuth.instance.currentUser;
-      final String driverId = user?.uid ?? 'driver_demo_001';
+      debugPrint('Cleaning and re-seeding Firestore collections...');
 
-      // Seed Shipments Collection
-      final batch = _firestore.batch();
-      for (final shipment in allCustomsShipments) {
-        final docRef = _firestore.collection('shipments').doc(shipment.shipmentId);
-        batch.set(
-          docRef,
-          shipment.toFirestore()..['driverId'] = driverId,
-          SetOptions(merge: true),
-        );
+      final Map<String, Map<String, String>> drivers = {
+        'NLLVf64UNCTtQqqVWoFbISNXANi2': {
+          'name': 'Saman Kumara',
+          'email': 'samankumara@gmail.com',
+          'phone': '0774568925',
+          'vehicleNo': 'WP-DD-6556',
+          'company': 'Expolanka Logistics',
+        },
+        'aVXAL9vEk6amKpcBaAgHzyQbptO2': {
+          'name': 'Amal Silva',
+          'email': 'amal@gmail.com',
+          'phone': '0768965984',
+          'vehicleNo': 'WP-DD-3468',
+          'company': 'DCD Logistics',
+        },
+        'lXEXEJuJXPOvUuOzyVrmcLBQkG03': {
+          'name': 'Nimal Bandara',
+          'email': 'nimalbandara28@gmail.com',
+          'phone': '+94 77 456 4567',
+          'vehicleNo': 'WP-DA-5588',
+          'company': 'Customs Bonded Carrier Ltd',
+        },
+        'o9z4RdvhWys5YHgrFg1bcZkG03a2': {
+          'name': 'Kasun Perera',
+          'email': 'kasunperera@gmail.com',
+          'phone': '+94 77 123 4567',
+          'vehicleNo': 'WP-DA-4821',
+          'company': 'Customs Bonded Carrier Ltd',
+        },
+      };
+
+      final List<String> driverIds = drivers.keys.toList();
+
+      // Delete all old documents in shipments collection to remove duplicates
+      final oldShipments = await _firestore.collection('shipments').get();
+      final deleteBatch = _firestore.batch();
+      for (var doc in oldShipments.docs) {
+        deleteBatch.delete(doc.reference);
+      }
+      await deleteBatch.commit();
+      debugPrint('Cleared all existing old shipments.');
+
+      // Seed Clean Shipments with Fixed Doc IDs (e.g., SHP-2026-001)
+      final seedBatch = _firestore.batch();
+
+      // Driver Name to UID mapping for exact consistency
+      final Map<String, String> nameToUid = {
+        'Saman Kumara': 'NLLVf64UNCTtQqqVWoFbISNXANi2',
+        'Amal Silva': 'aVXAL9vEk6amKpcBaAgHzyQbptO2',
+        'Nimal Bandara': 'lXEXEJuJXPOvUuOzyVrmcLBQkG03',
+        'Kasun Perera': 'o9z4RdvhWys5YHgrFg1bcZkG03a2',
+      };
+
+      for (int i = 0; i < allCustomsShipments.length; i++) {
+        final shipment = allCustomsShipments[i];
+        final assignedDriverId = nameToUid[shipment.driverName] ?? driverIds[i % driverIds.length];
+        final assignedDriverDetails = drivers[assignedDriverId] ?? drivers[driverIds[0]]!;
+
+        // Use fixed ID from dataset so it never duplicates on sync
+        final docRef = _firestore.collection('shipments').doc(shipment.id);
+
+        final shipmentData = shipment.toFirestore()
+          ..['id'] = shipment.id
+          ..['driverId'] = assignedDriverId
+          ..['driverName'] = assignedDriverDetails['name']!
+          ..['vehicleNo'] = assignedDriverDetails['vehicleNo']!;
+
+        seedBatch.set(docRef, shipmentData);
       }
 
-      // Seed Users Collection with consistent driver and vehicle details
-      final userDocRef = _firestore.collection('users').doc(driverId);
-      batch.set(
-        userDocRef,
-        {
-          'uid': driverId,
-          'fullName': defaultDriverName,
-          'fullname': defaultDriverName,
-          'email': user?.email ?? 'driver@securetrack.lk',
-          'phone': defaultPhone,
-          'vehicleNo': defaultVehicleNo,
-          'licenseNo': defaultLicenseNo,
-          'company': defaultCompany,
-          'role': 'DRIVER',
-          'vehicleType': 'Tata Prima 4928.S (Heavy Prime Mover)',
-          'trailerType': '40ft Tri-Axle Skeletal Trailer',
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+      // Seed/Update Users Collection for Authorized Drivers
+      for (var entry in drivers.entries) {
+        final uid = entry.key;
+        final details = entry.value;
+        final userDocRef = _firestore.collection('users').doc(uid);
 
-      // Seed Alerts Collection
-      for (final alert in defaultCustomsAlerts) {
-        final alertDocRef = _firestore.collection('alerts').doc(alert['id']);
-        batch.set(
-          alertDocRef,
+        seedBatch.set(
+          userDocRef,
           {
-            ...alert,
-            'driverId': driverId,
+            'uid': uid,
+            'fullName': details['name'],
+            'fullname': details['name'],
+            'email': details['email'],
+            'phone': details['phone'],
+            'vehicleNo': details['vehicleNo'],
+            'company': details['company'],
+            'role': 'DRIVER',
+            'vehicleType': 'Tata Prima 4928.S (Heavy Prime Mover)',
+            'trailerType': '40ft Tri-Axle Skeletal Trailer',
+            'updatedAt': FieldValue.serverTimestamp(),
           },
           SetOptions(merge: true),
         );
       }
 
-      await batch.commit();
-      debugPrint('Successfully seeded shipments, users, and alerts collections!');
+      // Seed Alerts with clean driverId distribution
+      for (int i = 0; i < defaultCustomsAlerts.length; i++) {
+        final alert = defaultCustomsAlerts[i];
+        final assignedDriverId = driverIds[i % driverIds.length];
+        final alertDocRef = _firestore.collection('alerts').doc(alert['id']);
+
+        seedBatch.set(
+          alertDocRef,
+          {
+            ...alert,
+            'driverId': assignedDriverId,
+          },
+          SetOptions(merge: true),
+        );
+      }
+
+      await seedBatch.commit();
+      debugPrint('Successfully seeded shipments, authorized users, and alerts collections!');
     } catch (e) {
       debugPrint('Error seeding Firebase collections: $e');
       rethrow;
     }
   }
 
-  /// Automatically seeds all collections if shipments collection is empty
+  /// Automatically seeds all collections if shipments or users collection is empty
   static Future<void> seedInitialDataIfEmpty() async {
     try {
-      final snapshot = await _firestore.collection('shipments').limit(1).get();
-      if (snapshot.docs.isEmpty) {
-        await seedAllCollections();
-      }
+      return;
     } catch (e) {
       debugPrint('Error checking/seeding collections: $e');
     }

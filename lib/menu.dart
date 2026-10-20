@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:driver_app/settings_screen.dart';
 import 'package:driver_app/screens/shipments_screen.dart';
+import 'package:driver_app/services/session_service.dart';
 
 class Menu extends StatelessWidget {
   final Function(int) onSelectTab;
@@ -170,9 +171,9 @@ class Menu extends StatelessWidget {
                     : null,
                 onTap: () async {
                   Navigator.pop(dialogContext);
-                  Future.delayed(const Duration(milliseconds: 250), () async {
+                  if (parentContext.mounted) {
                     await parentContext.setLocale(const Locale('en'));
-                  });
+                  }
                 },
               ),
               ListTile(
@@ -182,9 +183,9 @@ class Menu extends StatelessWidget {
                     : null,
                 onTap: () async {
                   Navigator.pop(dialogContext);
-                  Future.delayed(const Duration(milliseconds: 250), () async {
+                  if (parentContext.mounted) {
                     await parentContext.setLocale(const Locale('si'));
-                  });
+                  }
                 },
               ),
               ListTile(
@@ -194,9 +195,9 @@ class Menu extends StatelessWidget {
                     : null,
                 onTap: () async {
                   Navigator.pop(dialogContext);
-                  Future.delayed(const Duration(milliseconds: 250), () async {
+                  if (parentContext.mounted) {
                     await parentContext.setLocale(const Locale('ta'));
-                  });
+                  }
                 },
               ),
             ],
@@ -221,14 +222,11 @@ class Menu extends StatelessWidget {
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
               try {
-                await FirebaseAuth.instance.signOut();
                 if (dialogContext.mounted) {
                   Navigator.pop(dialogContext);
                 }
+                await SessionService.logout(parentContext);
               } catch (e) {
-                if (dialogContext.mounted) {
-                  Navigator.pop(dialogContext);
-                }
                 if (parentContext.mounted) {
                   ScaffoldMessenger.of(parentContext).showSnackBar(
                     SnackBar(content: Text('Logout Error: $e')),

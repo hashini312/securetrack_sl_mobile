@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'session_service.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -14,8 +14,7 @@ class AuthService {
       );
 
       if (credential.user != null) {
-        SharedPreferences prefs = await SharedPreferences.getInstance();
-        await prefs.setInt('login_time', DateTime.now().millisecondsSinceEpoch);
+        await SessionService.recordLogin();
       }
 
       return credential.user;
@@ -27,8 +26,6 @@ class AuthService {
 
   // Logout
   Future<void> logout() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.remove('login_time');
-    await _auth.signOut();
+    await SessionService.logout(null);
   }
 }

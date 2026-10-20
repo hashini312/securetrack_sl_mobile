@@ -54,18 +54,22 @@ extension PriorityExtension on PriorityLevel {
 }
 
 class AlertItem {
+  final String? id;
   final String title;
   final String description;
   final String time;
   final IconData icon;
   final PriorityLevel priority;
+  final bool isRead;
 
   const AlertItem({
+    this.id,
     required this.title,
     required this.description,
     required this.time,
     required this.icon,
     required this.priority,
+    this.isRead = true,
   });
 
   factory AlertItem.fromFirestore(DocumentSnapshot doc) {
@@ -140,11 +144,13 @@ class AlertItem {
     }
 
     return AlertItem(
+      id: doc.id,
       title: data['title'] ?? '',
       description: data['description'] ?? '',
       time: formattedTime,
       icon: alertIcon,
       priority: priorityEnum,
+      isRead: data['isRead'] ?? false,
     );
   }
 
@@ -175,11 +181,13 @@ class AlertItem {
     }
 
     return AlertItem(
+      id: data['id'],
       title: data['title'] ?? '',
       description: data['description'] ?? '',
       time: 'Today',
       icon: alertIcon,
       priority: priorityEnum,
+      isRead: data['isRead'] ?? true,
     );
   }
 }
@@ -215,13 +223,25 @@ class AlertsScreen extends StatelessWidget {
               padding: const EdgeInsets.all(12.0),
               itemCount: alertDocs.length,
               itemBuilder: (context, index) {
-                final alert = AlertItem.fromFirestore(alertDocs[index]);
-                return _buildAlertCard(alert);
+                final doc = alertDocs[index];
+                final alert = AlertItem.fromFirestore(doc);
+                return _buildAlertCard(
+                  alert,
+                  onTap: () async {
+                    if (!alert.isRead) {
+                      try {
+                        await doc.reference.update({'isRead': true});
+                      } catch (e) {
+                        debugPrint("Error updating alert read state: $e");
+                      }
+                    }
+                  },
+                );
               },
             );
           }
 
-          // Fallback to default Sri Lanka Customs alerts if empty or index not ready
+          // Fallback to default Sri Lanka Customs alerts if empty
           final fallbackAlerts = FirebaseService.defaultCustomsAlerts;
           if (fallbackAlerts.isNotEmpty) {
             return ListView.builder(
@@ -245,7 +265,7 @@ class AlertsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildAlertCard(AlertItem alert) {
+  Widget _buildAlertCard(AlertItem alert, {VoidCallback? onTap}) {
     final priorityColor = alert.priority.color;
 
     return Card(
@@ -267,8 +287,8 @@ class AlertsScreen extends StatelessWidget {
                 Expanded(
                   child: Text(
                     alert.title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
+                    style: TextStyle(
+                      fontWeight: alert.isRead ? FontWeight.w600 : FontWeight.bold,
                       fontSize: 15,
                     ),
                     overflow: TextOverflow.ellipsis,
@@ -309,9 +329,23 @@ class AlertsScreen extends StatelessWidget {
               ),
             ],
           ),
-          trailing:
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!alert.isRead)
+                Container(
+                  width: 8,
+                  height: 8,
+                  margin: const EdgeInsets.only(right: 6),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF2563EB),
+                    shape: BoxShape.circle,
+                  ),
+                ),
               const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
-          onTap: () {},
+            ],
+          ),
+          onTap: onTap,
         ),
       ),
     );

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_core/firebase_core.dart' hide FirebaseService;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -17,6 +17,8 @@ import 'package:driver_app/screens/alerts_screen.dart';
 import 'package:driver_app/screens/profile_screen.dart';
 import 'package:driver_app/screens/shipments_screen.dart';
 import 'package:driver_app/services/shipment_service.dart';
+import 'package:driver_app/services/firebase_service.dart';
+import 'package:driver_app/services/session_service.dart';
 
 // Top-level Background Notification Handler
 @pragma('vm:entry-point')
@@ -141,25 +143,82 @@ class MyApp extends StatelessWidget {
           ),
 
           // Login State Management
-          home: StreamBuilder<User?>(
-            stream: FirebaseAuth.instance.authStateChanges(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Scaffold(
-                  body: Center(
-                    child: CircularProgressIndicator(),
-                  ),
-                );
-              }
-              if (snapshot.hasData && snapshot.data != null) {
-                return const MainNavigationScreen();
-              }
-              return const DriverLoginPage();
-            },
-          ),
+          home: const AuthWrapper(),
         );
       },
     );
+  }
+}
+
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+
+        final user = snapshot.data;
+        if (user == null) {
+          return const DriverLoginPage();
+        }
+
+        return FutureBuilder<bool>(
+          future: _verifyDriverAccessAndSession(user.uid),
+          builder: (context, checkSnapshot) {
+            if (checkSnapshot.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                body: Center(
+                  child: CircularProgressIndicator(),
+                ),
+              );
+            }
+
+            final bool isAuthorized = checkSnapshot.data ?? false;
+            if (isAuthorized) {
+              return const MainNavigationScreen();
+            } else {
+              FirebaseAuth.instance.signOut();
+              return const DriverLoginPage();
+            }
+          },
+        );
+      },
+    );
+  }
+
+  static Future<bool> _verifyDriverAccessAndSession(String uid) async {
+    final bool sessionOk = await SessionService.isSessionValid();
+    if (!sessionOk) {
+      return false;
+    }
+
+    try {
+      DocumentSnapshot userDoc =
+          await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      if (!userDoc.exists) {
+        await FirebaseService.seedInitialDataIfEmpty();
+        userDoc =
+            await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      }
+      if (!userDoc.exists) {
+        return false;
+      }
+      final data = userDoc.data() as Map<String, dynamic>?;
+      final role = (data?['role'] ?? '').toString().toUpperCase();
+      return role == 'DRIVER';
+    } catch (e) {
+      debugPrint("Error checking driver access: $e");
+      return false;
+    }
   }
 }
 
@@ -177,7 +236,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   @override
   void initState() {
     super.initState();
+    SessionService.startMonitoring(context);
     _setupFcmTokenAndListeners();
+  }
+
+  @override
+  void dispose() {
+    SessionService.stopMonitoring();
+    super.dispose();
   }
 
   Future<void> _setupFcmTokenAndListeners() async {
@@ -269,78 +335,82 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       const ProfileScreen(),
     ];
 
-    return Scaffold(
-      // Side Drawer
-      drawer: Menu(
-        onSelectTab: (index) {
-          _onItemTapped(index);
-        },
-      ),
-
-      appBar: AppBar(
-        centerTitle: true,
-        
-        // Tab Name
-        title: Text(
-          titles[_selectedIndex],
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        
-        // Menu Bar Icon
-        leading: Builder(
-          builder: (context) => IconButton(
-            icon: const Icon(Icons.menu),
-            onPressed: () {
-              Scaffold.of(context).openDrawer();
-            },
-          ),
+    return Listener(
+      onPointerDown: (_) => SessionService.updateActivity(),
+      behavior: HitTestBehavior.translucent,
+      child: Scaffold(
+        // Side Drawer
+        drawer: Menu(
+          onSelectTab: (index) {
+            _onItemTapped(index);
+          },
         ),
 
-        // Top Notification Icon
-        actions: [
-          IconButton(
-            icon: Badge(
-              isLabelVisible: _unreadAlertsCount > 0,
-              label: Text('$_unreadAlertsCount'),
-              child: const Icon(Icons.notifications_none),
+        appBar: AppBar(
+          centerTitle: true,
+          
+          // Tab Name
+          title: Text(
+            titles[_selectedIndex],
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          
+          // Menu Bar Icon
+          leading: Builder(
+            builder: (context) => IconButton(
+              icon: const Icon(Icons.menu),
+              onPressed: () {
+                Scaffold.of(context).openDrawer();
+              },
             ),
-            onPressed: () {
-              _onItemTapped(2);
-            },
           ),
-        ],
-      ),
 
-      body: screens[_selectedIndex],
-
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color.fromARGB(255, 23, 53, 134),
-        unselectedItemColor: const Color.fromARGB(255, 92, 125, 210),
-        items: [
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.home),
-            label: 'home'.tr(),
-          ),
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.map),
-            label: 'route'.tr(),
-          ),
-          BottomNavigationBarItem(
-            icon: Badge(
-              isLabelVisible: _unreadAlertsCount > 0,
-              label: Text('$_unreadAlertsCount'),
-              child: const Icon(Icons.notifications),
+          // Top Notification Icon
+          actions: [
+            IconButton(
+              icon: Badge(
+                isLabelVisible: _unreadAlertsCount > 0,
+                label: Text('$_unreadAlertsCount'),
+                child: const Icon(Icons.notifications_none),
+              ),
+              onPressed: () {
+                _onItemTapped(2);
+              },
             ),
-            label: 'alerts'.tr(),
-          ),
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.person),
-            label: 'profile'.tr(),
-          ),
-        ],
+          ],
+        ),
+
+        body: screens[_selectedIndex],
+
+        bottomNavigationBar: BottomNavigationBar(
+          currentIndex: _selectedIndex,
+          onTap: _onItemTapped,
+          type: BottomNavigationBarType.fixed,
+          selectedItemColor: const Color.fromARGB(255, 23, 53, 134),
+          unselectedItemColor: const Color.fromARGB(255, 92, 125, 210),
+          items: [
+            BottomNavigationBarItem(
+              icon: const Icon(Icons.home),
+              label: 'home'.tr(),
+            ),
+            BottomNavigationBarItem(
+              icon: const Icon(Icons.map),
+              label: 'route'.tr(),
+            ),
+            BottomNavigationBarItem(
+              icon: Badge(
+                isLabelVisible: _unreadAlertsCount > 0,
+                label: Text('$_unreadAlertsCount'),
+                child: const Icon(Icons.notifications),
+              ),
+              label: 'alerts'.tr(),
+            ),
+            BottomNavigationBarItem(
+              icon: const Icon(Icons.person),
+              label: 'profile'.tr(),
+            ),
+          ],
+        ),
       ),
     );
   }
