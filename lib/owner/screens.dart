@@ -9,6 +9,7 @@ import 'components.dart';
 import 'firebase_service.dart';
 import 'models.dart';
 import 'session_manager.dart';
+import 'enhanced_container_card.dart';
 import 'package:securetrack_sl/driver/services/session_service.dart';
 
 //Splash screen with modern real animation (no letters/text)
@@ -1252,7 +1253,7 @@ class DashboardScreen extends StatelessWidget {
 
                       // Recent Containers List
                       ...containers.map(
-                        (container) => ContainerItemCard(
+                        (container) => EnhancedOwnerContainerCard(
                           container: container,
                           onTap: () {
                             Navigator.of(context).pushNamed(
