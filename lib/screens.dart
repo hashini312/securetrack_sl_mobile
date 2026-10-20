@@ -4,11 +4,13 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
 import 'api_service.dart';
+import 'app_settings.dart';
 import 'components.dart';
 import 'firebase_service.dart';
 import 'models.dart';
+import 'session_manager.dart';
 
-//Splash screen
+//Splash screen with modern real animation (no letters/text)
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -16,21 +18,68 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMixin {
+  late final AnimationController _pulseController;
+  late final AnimationController _scaleController;
+  late final Animation<double> _scaleAnimation;
+  late final Animation<double> _fadeAnimation;
   Timer? _timer;
+  bool _hasNavigated = false;
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer(const Duration(milliseconds: 2800), () {
-      if (mounted) {
-        Navigator.of(context).pushReplacementNamed('/role-selection');
-      }
+    // Continuous subtle breathing/pulse animation
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat(reverse: true);
+
+    // Initial entrance scale & fade animation
+    _scaleController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+
+    _scaleAnimation = CurvedAnimation(
+      parent: _scaleController,
+      curve: Curves.easeOutBack,
+    );
+
+    _fadeAnimation = CurvedAnimation(
+      parent: _scaleController,
+      curve: Curves.easeIn,
+    );
+
+    _scaleController.forward();
+
+    _timer = Timer(const Duration(milliseconds: 4000), () {
+      _checkSessionAndNavigate();
     });
+  }
+
+  Future<void> _checkSessionAndNavigate() async {
+    if (!mounted || _hasNavigated) return;
+    _hasNavigated = true;
+
+    // Check if user has an active session within the 15-minute window
+    final sessionUser = await SessionManager.instance.getValidSession();
+    if (!mounted) return;
+
+    if (sessionUser != null) {
+      // Valid session found! Restore user profile and go straight to Dashboard
+      ApiService.instance.setCurrentUser(sessionUser);
+      Navigator.of(context).pushReplacementNamed('/home');
+    } else {
+      // No active session or expired (> 15 min), navigate to Role Selection / Login
+      Navigator.of(context).pushReplacementNamed('/role-selection');
+    }
   }
 
   @override
   void dispose() {
+    _pulseController.dispose();
+    _scaleController.dispose();
     _timer?.cancel();
     super.dispose();
   }
@@ -40,30 +89,79 @@ class _SplashScreenState extends State<SplashScreen> {
     return Scaffold(
       backgroundColor: AppColors.splashNavy,
       body: GestureDetector(
-        onTap: () => Navigator.of(context).pushReplacementNamed('/role-selection'),
+        onTap: _checkSessionAndNavigate,
         behavior: HitTestBehavior.opaque,
         child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Centered Black & White Logo
-              const AppLogo(
-                size: 120,
-                isDarkBackground: true,
-                isBw: true,
-              ),
-              const SizedBox(height: 24),
-              // App Title
-              Text(
-                'SecureTrack SL',
-                style: GoogleFonts.poppins(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  letterSpacing: 1.0,
+          child: AnimatedBuilder(
+            animation: Listenable.merge([_scaleController, _pulseController]),
+            builder: (context, child) {
+              final pulseValue = _pulseController.value;
+              return FadeTransition(
+                opacity: _fadeAnimation,
+                child: ScaleTransition(
+                  scale: _scaleAnimation,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // Outer Radar Ripple / Glow Ring 1
+                      Container(
+                        width: 200 + (pulseValue * 30),
+                        height: 200 + (pulseValue * 30),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFF2563EB).withValues(alpha: 0.08 * (1 - pulseValue)),
+                          border: Border.all(
+                            color: const Color(0xFF60A5FA).withValues(alpha: 0.25 * (1 - pulseValue)),
+                            width: 1.5,
+                          ),
+                        ),
+                      ),
+                      // Middle Glowing Ring 2
+                      Container(
+                        width: 170 + (pulseValue * 15),
+                        height: 170 + (pulseValue * 15),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFF1E4E8C).withValues(alpha: 0.15),
+                          border: Border.all(
+                            color: const Color(0xFF38BDF8).withValues(alpha: 0.4),
+                            width: 2.0,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF2563EB).withValues(alpha: 0.25),
+                              blurRadius: 25,
+                              spreadRadius: 4,
+                            ),
+                          ],
+                        ),
+                      ),
+                      // Center Logo Hero (Increased size & subtle breathing)
+                      Transform.scale(
+                        scale: 1.0 + (pulseValue * 0.05),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.35),
+                                blurRadius: 20,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: const AppLogo(
+                            size: 135,
+                            isDarkBackground: true,
+                            isBw: true,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              );
+            },
           ),
         ),
       ),
@@ -87,7 +185,7 @@ class RoleSelectionScreen extends StatelessWidget {
             Center(
               child: Column(
                 children: [
-                  const AppLogo(size: 60, isDarkBackground: true, isBw: true),
+                  const AppLogo(size: 150, isDarkBackground: true, isBw: true),
                   const SizedBox(height: 14),
                   Text(
                     'SecureTrack SL',
@@ -126,8 +224,16 @@ class RoleSelectionScreen extends StatelessWidget {
                 children: [
                   // Container Owner Card
                   InkWell(
-                    onTap: () {
-                      Navigator.of(context).pushNamed('/login', arguments: 'Owner');
+                    onTap: () async {
+                      // Check if already logged in within 15 minutes
+                      final sessionUser = await SessionManager.instance.getValidSession();
+                      if (!context.mounted) return;
+                      if (sessionUser != null) {
+                        ApiService.instance.setCurrentUser(sessionUser);
+                        Navigator.of(context).pushReplacementNamed('/home');
+                      } else {
+                        Navigator.of(context).pushNamed('/login', arguments: 'Owner');
+                      }
                     },
                     borderRadius: BorderRadius.circular(16),
                     child: Container(
@@ -286,8 +392,17 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    _emailController = TextEditingController(text: 'owner@cargooverseas.lk');
-    _passwordController = TextEditingController(text: 'Secure@2026');
+    _emailController = TextEditingController();
+    _passwordController = TextEditingController();
+    _checkActiveSession();
+  }
+
+  Future<void> _checkActiveSession() async {
+    final sessionUser = await SessionManager.instance.getValidSession();
+    if (mounted && sessionUser != null) {
+      ApiService.instance.setCurrentUser(sessionUser);
+      Navigator.of(context).pushReplacementNamed('/home');
+    }
   }
 
   @override
@@ -296,9 +411,6 @@ class _LoginScreenState extends State<LoginScreen> {
     final args = ModalRoute.of(context)?.settings.arguments;
     if (args is String && (args == 'Driver' || args == 'Owner')) {
       _userRole = args;
-      if (_userRole == 'Driver' && _emailController.text == 'owner@cargooverseas.lk') {
-        _emailController.text = 'driver@cargooverseas.lk';
-      }
     }
   }
 
@@ -431,17 +543,36 @@ class _LoginScreenState extends State<LoginScreen> {
                 alignment: Alignment.centerLeft,
                 child: IconButton(
                   icon: const Icon(Icons.arrow_back, color: AppColors.textDark),
-                  onPressed: () => Navigator.of(context).pushReplacementNamed('/role-selection'),
+                  onPressed: () {
+                    if (Navigator.of(context).canPop()) {
+                      Navigator.of(context).pop();
+                    } else {
+                      Navigator.of(context).pushReplacementNamed('/role-selection');
+                    }
+                  },
                 ),
               ),
 
-              // Brand Header
-              const AppLogo(size: 60),
-              const SizedBox(height: 14),
+              // Brand Header with enhanced Logo size
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primaryBlue.withValues(alpha: 0.12),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: const AppLogo(size: 150),
+              ),
+              const SizedBox(height: 16),
               Text(
                 'SecureTrack SL',
                 style: GoogleFonts.poppins(
-                  fontSize: 22,
+                  fontSize: 24,
                   fontWeight: FontWeight.bold,
                   color: AppColors.primaryBlue,
                 ),
@@ -720,89 +851,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
           child: Column(
             children: [
-              // Role Selector Toggle
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _selectedRole = 'Owner';
-                          });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          decoration: BoxDecoration(
-                            color: _selectedRole == 'Owner' ? AppColors.primaryBlue : Colors.transparent,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.person,
-                                size: 16,
-                                color: _selectedRole == 'Owner' ? Colors.white : AppColors.textMuted,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                'Container Owner',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: _selectedRole == 'Owner' ? Colors.white : AppColors.textDark,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _selectedRole = 'Driver';
-                          });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          decoration: BoxDecoration(
-                            color: _selectedRole == 'Driver' ? const Color(0xFF10B981) : Colors.transparent,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.directions_car,
-                                size: 16,
-                                color: _selectedRole == 'Driver' ? Colors.white : AppColors.textMuted,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                'Driver',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: _selectedRole == 'Driver' ? Colors.white : AppColors.textDark,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 10),
 
               // Inputs with validation errors
               CustomInputField(
@@ -936,240 +985,295 @@ class DashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<ContainerModel>>(
-      stream: FirebaseService.instance.getContainersStream(),
-      initialData: ContainerModel.sampleContainers,
-      builder: (context, snapshot) {
-        final containers = snapshot.data ?? ContainerModel.sampleContainers;
-        final int totalCount = containers.length;
-        final int onTrackCount = containers.where((c) => c.status.trim().toLowerCase() == 'on track').length;
-        final int arrivedCount = containers.where((c) => c.status.trim().toLowerCase() == 'arrived').length;
-        final int alertsCount = containers.where((c) => c.sealStatus.trim().toLowerCase() == 'tampered' || c.batteryLevel < 25).length;
+    final settings = AppSettingsController.instance;
 
-        return Scaffold(
-          backgroundColor: AppColors.background,
-          drawer: _buildDashboardDrawer(context),
-          body: SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Top Header
-                  Builder(
-                    builder: (context) {
-                      final currentUser = ApiService.instance.currentUser;
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Builder(
-                            builder: (scaffoldContext) => GestureDetector(
-                              onTap: () => Scaffold.of(scaffoldContext).openDrawer(),
-                              child: const Icon(Icons.menu, color: AppColors.textDark, size: 26),
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Hello,',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 12,
-                                    color: AppColors.textMuted,
+    return ListenableBuilder(
+      listenable: settings,
+      builder: (context, _) {
+        final isDark = settings.isDarkMode;
+        final bgColor = isDark ? const Color(0xFF0F172A) : AppColors.background;
+        final cardColor = isDark ? const Color(0xFF1E293B) : Colors.white;
+        final textColor = isDark ? Colors.white : AppColors.textDark;
+        final textMuted = isDark ? const Color(0xFF94A3B8) : AppColors.textMuted;
+        final borderColor = isDark ? const Color(0xFF334155) : AppColors.borderLight;
+
+        final currentUser = ApiService.instance.currentUser;
+        return StreamBuilder<List<ContainerModel>>(
+          stream: FirebaseService.instance.getContainersStream(
+            ownerEmail: currentUser.email,
+            company: currentUser.company,
+          ),
+          initialData: ContainerModel.sampleContainers.where((c) => c.ownerEmail.toLowerCase() == currentUser.email.toLowerCase()).toList().isNotEmpty
+              ? ContainerModel.sampleContainers.where((c) => c.ownerEmail.toLowerCase() == currentUser.email.toLowerCase()).toList()
+              : ContainerModel.sampleContainers,
+          builder: (context, snapshot) {
+            final containers = snapshot.data ?? ContainerModel.sampleContainers;
+            final int totalCount = containers.length;
+            final int onTrackCount = containers.where((c) => c.status.trim().toLowerCase() == 'on track').length;
+            final int arrivedCount = containers.where((c) => c.status.trim().toLowerCase() == 'arrived').length;
+            final int alertsCount = containers.where((c) => c.sealStatus.trim().toLowerCase() == 'tampered' || c.batteryLevel < 50).length;
+
+            return Scaffold(
+              backgroundColor: bgColor,
+              drawer: _buildDashboardDrawer(context),
+              body: SafeArea(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Top Header
+                      Builder(
+                        builder: (context) {
+                          final currentUser = ApiService.instance.currentUser;
+                          return Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Builder(
+                                builder: (scaffoldContext) => GestureDetector(
+                                  onTap: () => Scaffold.of(scaffoldContext).openDrawer(),
+                                  child: Icon(Icons.menu, color: textColor, size: 26),
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${settings.tr('hello')},',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 12,
+                                        color: textMuted,
+                                      ),
+                                    ),
+                                    Text(
+                                      currentUser.name,
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: textColor,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // Quick Language Badge / Selector
+                              GestureDetector(
+                                onTap: () => Navigator.of(context).pushNamed('/settings'),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: isDark ? const Color(0xFF334155) : const Color(0xFFE0EDFB),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: isDark ? const Color(0xFF475569) : AppColors.primaryBlue.withValues(alpha: 0.2),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(settings.language.flag, style: const TextStyle(fontSize: 12)),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        settings.language.label,
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                          color: isDark ? const Color(0xFF93C5FD) : AppColors.primaryBlue,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                Text(
-                                  currentUser.name,
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.textDark,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(width: 6),
+                              // Role Badge
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primaryBlue,
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          // Role Badge
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: AppColors.primaryBlue,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              currentUser.role,
-                              style: GoogleFonts.poppins(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 18),
-
-                  // Total Containers Banner Card
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.borderLight, width: 1),
-                    ),
-                    child: Row(
-                      children: [
-                        // Container Graphic Stack
-                        Image.asset(
-                          'assets/images/container_banner.png',
-                          width: 90,
-                          height: 50,
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              width: 80,
-                              height: 50,
-                              decoration: BoxDecoration(
-                                color: AppColors.primaryBlue,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: const Icon(Icons.inventory_2, color: Colors.white),
-                            );
-                          },
-                        ),
-                        const Spacer(),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              'Total Containers',
-                              style: GoogleFonts.poppins(
-                                fontSize: 12,
-                                color: AppColors.textMedium,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            Text(
-                              '$totalCount',
-                              style: GoogleFonts.poppins(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.primaryBlue,
-                              ),
-                            ),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.circle, color: AppColors.successGreen, size: 8),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Arrived ($arrivedCount)',
+                                child: Text(
+                                  currentUser.role,
                                   style: GoogleFonts.poppins(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w600,
-                                    color: AppColors.successGreen,
+                                    color: Colors.white,
                                   ),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 18),
+
+                      // Total Containers Banner Card
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                        decoration: BoxDecoration(
+                          color: cardColor,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: borderColor, width: 1),
+                        ),
+                        child: Row(
+                          children: [
+                            // Container Graphic Stack
+                            Image.asset(
+                              'assets/images/container_banner.png',
+                              width: 90,
+                              height: 50,
+                              fit: BoxFit.contain,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  width: 80,
+                                  height: 50,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primaryBlue,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Icon(Icons.inventory_2, color: Colors.white),
+                                );
+                              },
+                            ),
+                            const Spacer(),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  '${settings.tr('total_containers')} ($totalCount)',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 12,
+                                    color: textMuted,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                Text(
+                                  '$totalCount',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
+                                  ),
+                                ),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.circle, color: AppColors.successGreen, size: 8),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '${settings.tr('arrived')} ($arrivedCount)',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.successGreen,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
                           ],
                         ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
+                      ),
+                      const SizedBox(height: 14),
 
-                  // 3 Metric Cards: [On Track] [Alerts] [Arrived]
-                  Row(
-                    children: [
-                      Expanded(
-                        child: MetricCard(
-                          value: '$onTrackCount',
-                          label: 'On Track',
-                          backgroundColor: const Color(0xFFD4EEDF),
-                          textColor: const Color(0xFF166534),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: MetricCard(
-                          value: '$alertsCount',
-                          label: 'Alerts',
-                          backgroundColor: alertsCount > 0 ? const Color(0xFFFEE2E2) : const Color(0xFFF1F5F9),
-                          textColor: alertsCount > 0 ? const Color(0xFF991B1B) : AppColors.textMuted,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: MetricCard(
-                          value: '$arrivedCount',
-                          label: 'Arrived',
-                          backgroundColor: const Color(0xFFD6E6F9),
-                          textColor: const Color(0xFF1E40AF),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Section Header: Recent Containers | View All
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Recent Containers',
-                        style: GoogleFonts.poppins(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textDark,
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: () => _showAllContainersModal(context, containers),
-                        child: Text(
-                          'View All',
-                          style: GoogleFonts.poppins(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.primaryBlue,
+                      // 3 Metric Cards: [On Track] [Alerts] [Arrived]
+                      Row(
+                        children: [
+                          Expanded(
+                            child: MetricCard(
+                              value: '$onTrackCount',
+                              label: settings.tr('on_track'),
+                              backgroundColor: const Color(0xFFD4EEDF),
+                              textColor: const Color(0xFF166534),
+                            ),
                           ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: MetricCard(
+                              value: '$alertsCount',
+                              label: settings.tr('alerts'),
+                              backgroundColor: alertsCount > 0 ? const Color(0xFFFEE2E2) : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
+                              textColor: alertsCount > 0 ? const Color(0xFF991B1B) : textMuted,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: MetricCard(
+                              value: '$arrivedCount',
+                              label: settings.tr('arrived'),
+                              backgroundColor: const Color(0xFFD6E6F9),
+                              textColor: const Color(0xFF1E40AF),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Section Header: Recent Containers | View All
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            settings.tr('recent_containers'),
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: textColor,
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: () => _showAllContainersModal(context, containers),
+                            child: Text(
+                              settings.tr('view_all'),
+                              style: GoogleFonts.poppins(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Recent Containers List
+                      ...containers.map(
+                        (container) => ContainerItemCard(
+                          container: container,
+                          onTap: () {
+                            Navigator.of(context).pushNamed(
+                              '/container-details',
+                              arguments: container,
+                            );
+                          },
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-
-                  // Recent Containers List
-                  ...containers.map(
-                    (container) => ContainerItemCard(
-                      container: container,
-                      onTap: () {
-                        Navigator.of(context).pushNamed(
-                          '/container-details',
-                          arguments: container,
-                        );
-                      },
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
   }
 
   Widget _buildDashboardDrawer(BuildContext context) {
+    final settings = AppSettingsController.instance;
+    final isDark = settings.isDarkMode;
+    final drawerBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final textCol = isDark ? Colors.white : AppColors.textDark;
+
     return Drawer(
-      backgroundColor: Colors.white,
+      backgroundColor: drawerBg,
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1192,6 +1296,7 @@ class DashboardScreen extends StatelessWidget {
                       child: Icon(Icons.person, color: AppColors.primaryBlue, size: 28),
                     ),
                   ),
+                  const SizedBox(height: 10),
                   Builder(
                     builder: (context) {
                       final currentUser = ApiService.instance.currentUser;
@@ -1223,7 +1328,7 @@ class DashboardScreen extends StatelessWidget {
             const SizedBox(height: 8),
             ListTile(
               leading: const Icon(Icons.home_outlined, color: AppColors.primaryBlue),
-              title: Text('Dashboard', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600)),
+              title: Text(settings.tr('dashboard'), style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: textCol)),
               onTap: () {
                 Navigator.pop(context);
                 onNavigateTab(0);
@@ -1231,7 +1336,7 @@ class DashboardScreen extends StatelessWidget {
             ),
             ListTile(
               leading: const Icon(Icons.location_on_outlined, color: AppColors.primaryBlue),
-              title: Text('Live Map Tracking', style: GoogleFonts.poppins(fontSize: 13)),
+              title: Text(settings.tr('live_tracking'), style: GoogleFonts.poppins(fontSize: 13, color: textCol)),
               onTap: () {
                 Navigator.pop(context);
                 onNavigateTab(1);
@@ -1239,7 +1344,7 @@ class DashboardScreen extends StatelessWidget {
             ),
             ListTile(
               leading: const Icon(Icons.notifications_outlined, color: AppColors.primaryBlue),
-              title: Text('Alerts & Logs', style: GoogleFonts.poppins(fontSize: 13)),
+              title: Text(settings.tr('alerts'), style: GoogleFonts.poppins(fontSize: 13, color: textCol)),
               onTap: () {
                 Navigator.pop(context);
                 onNavigateTab(2);
@@ -1247,26 +1352,48 @@ class DashboardScreen extends StatelessWidget {
             ),
             ListTile(
               leading: const Icon(Icons.business_outlined, color: AppColors.primaryBlue),
-              title: Text('Company Profile', style: GoogleFonts.poppins(fontSize: 13)),
+              title: Text(settings.tr('profile'), style: GoogleFonts.poppins(fontSize: 13, color: textCol)),
               onTap: () {
                 Navigator.pop(context);
                 onNavigateTab(3);
               },
             ),
+            ListTile(
+              leading: const Icon(Icons.settings_outlined, color: AppColors.primaryBlue),
+              title: Text(settings.tr('settings'), style: GoogleFonts.poppins(fontSize: 13, color: textCol)),
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF334155) : const Color(0xFFE0EDFB),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${settings.language.flag} ${settings.language.code.toUpperCase()}',
+                  style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.primaryBlue),
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).pushNamed('/settings');
+              },
+            ),
             const Spacer(),
-            const Divider(),
+            Divider(color: isDark ? const Color(0xFF334155) : AppColors.borderLight),
             ListTile(
               leading: const Icon(Icons.logout, color: AppColors.dangerRed),
               title: Text(
-                'Sign Out',
+                settings.tr('sign_out'),
                 style: GoogleFonts.poppins(
                   fontSize: 13,
                   fontWeight: FontWeight.bold,
                   color: AppColors.dangerRed,
                 ),
               ),
-              onTap: () {
-                Navigator.of(context).pushReplacementNamed('/role-selection');
+              onTap: () async {
+                await SessionManager.instance.clearSession();
+                if (context.mounted) {
+                  Navigator.of(context).pushNamedAndRemoveUntil('/role-selection', (route) => false);
+                }
               },
             ),
             const SizedBox(height: 10),
@@ -1277,6 +1404,11 @@ class DashboardScreen extends StatelessWidget {
   }
 
   void _showAllContainersModal(BuildContext context, List<ContainerModel> containers) {
+    final settings = AppSettingsController.instance;
+    final isDark = settings.isDarkMode;
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final textCol = isDark ? Colors.white : AppColors.textDark;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1284,9 +1416,9 @@ class DashboardScreen extends StatelessWidget {
       builder: (ctx) => Container(
         height: MediaQuery.of(ctx).size.height * 0.72,
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1296,7 +1428,7 @@ class DashboardScreen extends StatelessWidget {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: AppColors.borderLight,
+                  color: isDark ? const Color(0xFF334155) : AppColors.borderLight,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -1306,15 +1438,15 @@ class DashboardScreen extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'All Owned Containers (${containers.length})',
+                  '${settings.tr('total_containers')} (${containers.length})',
                   style: GoogleFonts.poppins(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.textDark,
+                    color: textCol,
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close, size: 20),
+                  icon: Icon(Icons.close, size: 20, color: textCol),
                   onPressed: () => Navigator.pop(ctx),
                 ),
               ],
@@ -1350,137 +1482,270 @@ class ContainerDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.textDark),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Text(
-          'Container Details',
-          style: GoogleFonts.poppins(
-            fontSize: 17,
-            fontWeight: FontWeight.bold,
-            color: AppColors.primaryBlue,
+    final settings = AppSettingsController.instance;
+
+    return ListenableBuilder(
+      listenable: settings,
+      builder: (context, _) {
+        final isDark = settings.isDarkMode;
+        final bgColor = isDark ? const Color(0xFF0F172A) : Colors.white;
+        final cardColor = isDark ? const Color(0xFF1E293B) : Colors.white;
+        final textColor = isDark ? Colors.white : AppColors.textDark;
+        final mutedText = isDark ? const Color(0xFF94A3B8) : AppColors.textMedium;
+
+        return Scaffold(
+          backgroundColor: bgColor,
+          appBar: AppBar(
+            backgroundColor: cardColor,
+            elevation: 0,
+            leading: IconButton(
+              icon: Icon(Icons.arrow_back, color: textColor),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+            title: Text(
+              settings.tr('view_details'),
+              style: GoogleFonts.poppins(
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+                color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
+              ),
+            ),
+            centerTitle: false,
           ),
-        ),
-        centerTitle: false,
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Top Container 3D Graphic + On Track Badge
-              Row(
+          body: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // 3D Shipping Container graphic
-                  Image.asset(
-                    'assets/images/container_details.png',
-                    height: 90,
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) {
-                      return const ContainerBoxArt(width: 140, height: 90);
+                  // Top Container 3D Graphic + On Track Badge
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // 3D Shipping Container graphic
+                      Image.asset(
+                        'assets/images/container_details.png',
+                        height: 90,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) {
+                          return const ContainerBoxArt(width: 140, height: 90);
+                        },
+                      ),
+                      // Status badge
+                      StatusBadge(status: container.status),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+
+                  // Container ID & Owner
+                  Text(
+                    container.id,
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Owner : ${container.owner}',
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: isDark ? const Color(0xFF93C5FD) : AppColors.primaryBlue,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Detail Item 1: ISO Container Number & Type
+                  _buildDetailRow(
+                    icon: Icons.tag,
+                    iconColor: AppColors.primaryBlue,
+                    title: 'ISO Container No / Type',
+                    value: '${container.isoContainerNo} (${container.id})',
+                    textColor: textColor,
+                    mutedColor: mutedText,
+                  ),
+
+                  // Detail Item 2: CUSDEC Customs Declaration No
+                  _buildDetailRow(
+                    icon: Icons.assignment_outlined,
+                    iconColor: AppColors.primaryBlue,
+                    title: 'Sri Lanka Customs CUSDEC No',
+                    value: container.cusdecNumber,
+                    textColor: textColor,
+                    mutedColor: mutedText,
+                  ),
+
+                  // Detail Item 3: Bill of Lading (BL) & Vessel
+                  _buildDetailRow(
+                    icon: Icons.directions_boat_outlined,
+                    iconColor: AppColors.primaryBlue,
+                    title: 'Bill of Lading / Vessel',
+                    value: '${container.billOfLading} • ${container.vesselName}',
+                    textColor: textColor,
+                    mutedColor: mutedText,
+                  ),
+
+                  // Detail Item 4: Cargo Description
+                  _buildDetailRow(
+                    icon: Icons.inventory_2_outlined,
+                    iconColor: AppColors.primaryBlue,
+                    title: 'Cargo Description',
+                    value: container.cargoDescription,
+                    textColor: textColor,
+                    mutedColor: mutedText,
+                  ),
+
+                  // Detail Item 5: Current Location
+                  _buildDetailRow(
+                    icon: Icons.my_location,
+                    iconColor: AppColors.primaryBlue,
+                    title: 'Current Location',
+                    value: container.currentLocation,
+                    textColor: textColor,
+                    mutedColor: mutedText,
+                  ),
+
+                  // Detail Item 6: Destination Yard
+                  _buildDetailRow(
+                    icon: Icons.location_on,
+                    iconColor: AppColors.primaryBlue,
+                    title: 'Destination (Examination Yard)',
+                    value: container.destination,
+                    textColor: textColor,
+                    mutedColor: mutedText,
+                  ),
+
+                  // Detail Item 7: Estimated Arrival
+                  _buildDetailRow(
+                    icon: Icons.calendar_today_outlined,
+                    iconColor: AppColors.primaryBlue,
+                    title: 'Estimated Arrival (ETA)',
+                    value: container.estimatedArrival,
+                    textColor: textColor,
+                    mutedColor: mutedText,
+                  ),
+
+                  // Detail Item 8: Assigned Driver & Emergency Call
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.person_outline, color: AppColors.primaryBlue, size: 24),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Assigned Driver & Emergency Contact',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: mutedText,
+                                ),
+                              ),
+                              const SizedBox(height: 1),
+                              Text(
+                                '${container.driverName} (${container.driverPhone})',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: textColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        InkWell(
+                          onTap: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Calling Driver ${container.driverName} at ${container.driverPhone}...'),
+                                backgroundColor: AppColors.primaryBlue,
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: AppColors.successLight,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: AppColors.successGreen.withValues(alpha: 0.4)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.phone, size: 14, color: AppColors.successGreen),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Call',
+                                  style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.successGreen),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Detail Item 9: IoT e-Seal Status
+                  _buildDetailRow(
+                    icon: Icons.lock_outline,
+                    iconColor: container.sealStatus.toLowerCase() == 'tampered' ? AppColors.dangerRed : AppColors.successGreen,
+                    title: '${settings.tr('seal_status')} (${container.sealId})',
+                    value: container.sealStatus,
+                    valueColor: container.sealStatus.toLowerCase() == 'tampered' ? AppColors.dangerRed : AppColors.successGreen,
+                    textColor: textColor,
+                    mutedColor: mutedText,
+                  ),
+
+                  // Detail Item 10: Battery Level & Telemetry Temp (SRS < 50% Threshold)
+                  _buildDetailRow(
+                    icon: Icons.battery_charging_full,
+                    iconColor: container.batteryLevel < 50 ? AppColors.warningOrange : AppColors.successGreen,
+                    title: '${settings.tr('battery')} & Sensor Telemetry (SRS <50% Alert)',
+                    value: '${container.batteryLevel}% ${container.batteryLevel < 50 ? "(Low Battery Warning)" : "(Optimal)"} • Temp: ${container.temperature}°C • Speed: ${container.speed} km/h',
+                    valueColor: container.batteryLevel < 50 ? AppColors.warningOrange : AppColors.successGreen,
+                    textColor: textColor,
+                    mutedColor: mutedText,
+                  ),
+
+                  // Detail Item 11: Fail-Safe Signal & GPS Mode (SRS REQ-3)
+                  _buildDetailRow(
+                    icon: container.gpsStatus == 'GPS Active' ? Icons.gps_fixed : Icons.warning_amber_rounded,
+                    iconColor: container.gpsStatus == 'GPS Active' ? AppColors.infoBlue : AppColors.warningOrange,
+                    title: 'GPS Signal Integrity (SRS REQ-3)',
+                    value: container.gpsStatus,
+                    valueColor: container.gpsStatus == 'GPS Active' ? AppColors.infoBlue : AppColors.warningOrange,
+                    textColor: textColor,
+                    mutedColor: mutedText,
+                  ),
+                  const SizedBox(height: 28),
+
+                  // Bottom Button: View on Map
+                  PrimaryButton(
+                    text: settings.tr('track_on_map'),
+                    onPressed: () {
+                      Navigator.of(context).pushNamed(
+                        '/live-tracking',
+                        arguments: container,
+                      );
                     },
                   ),
-                  // Status badge
-                  const StatusBadge(status: 'On Track'),
+                  const SizedBox(height: 16),
                 ],
               ),
-              const SizedBox(height: 18),
-
-              // Container ID & Owner
-              Text(
-                container.id,
-                style: GoogleFonts.poppins(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primaryBlue,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'Owner : ${container.owner}',
-                style: GoogleFonts.poppins(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  color: AppColors.primaryBlue,
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Detail Item 1: Current Location
-              _buildDetailRow(
-                icon: Icons.location_on,
-                iconColor: AppColors.primaryBlue,
-                title: 'Current Location',
-                value: container.currentLocation,
-              ),
-
-              // Detail Item 2: Dropoff Location
-              _buildDetailRow(
-                icon: Icons.location_on,
-                iconColor: AppColors.primaryBlue,
-                title: '',
-                value: container.destination,
-              ),
-
-              // Detail Item 3: Estimated Arrival
-              _buildDetailRow(
-                icon: Icons.calendar_today_outlined,
-                iconColor: AppColors.primaryBlue,
-                title: 'Estimated Arrival',
-                value: container.estimatedArrival,
-              ),
-
-              // Detail Item 4: Driver
-              _buildDetailRow(
-                icon: Icons.person_outline,
-                iconColor: AppColors.primaryBlue,
-                title: 'Driver',
-                value: container.driverName,
-              ),
-
-              // Detail Item 5: Seal Status
-              _buildDetailRow(
-                icon: Icons.check_box_outlined,
-                iconColor: AppColors.successGreen,
-                title: 'Seal Status',
-                value: container.sealStatus,
-                valueColor: AppColors.successGreen,
-              ),
-
-              // Detail Item 6: Battery Level
-              _buildDetailRow(
-                icon: Icons.battery_full,
-                iconColor: AppColors.successGreen,
-                title: 'Battery Level',
-                value: '${container.batteryLevel}%',
-                valueColor: AppColors.successGreen,
-              ),
-              const SizedBox(height: 28),
-
-              // Bottom Button: View on Map
-              PrimaryButton(
-                text: 'View on Map',
-                onPressed: () {
-                  Navigator.of(context).pushNamed(
-                    '/live-tracking',
-                    arguments: container,
-                  );
-                },
-              ),
-              const SizedBox(height: 16),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -1490,6 +1755,8 @@ class ContainerDetailsScreen extends StatelessWidget {
     required String title,
     required String value,
     Color? valueColor,
+    Color textColor = AppColors.textDark,
+    Color mutedColor = AppColors.textMedium,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -1508,7 +1775,7 @@ class ContainerDetailsScreen extends StatelessWidget {
                     style: GoogleFonts.poppins(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
-                      color: AppColors.textMedium,
+                      color: mutedColor,
                     ),
                   ),
                   const SizedBox(height: 1),
@@ -1518,7 +1785,7 @@ class ContainerDetailsScreen extends StatelessWidget {
                   style: GoogleFonts.poppins(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: valueColor ?? AppColors.textDark,
+                    color: valueColor ?? textColor,
                   ),
                 ),
               ],
@@ -1584,9 +1851,18 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   ];
 
   List<LatLng> get _currentRoute {
-    if (_selectedContainer.id == 'CONT-002') {
+    final dest = _selectedContainer.destination.toLowerCase();
+    final routeStr = _selectedContainer.route.toLowerCase();
+    if (_selectedContainer.id == 'CONT-002' ||
+        _selectedContainer.id == 'CONT-005' ||
+        dest.contains('grayline 1') ||
+        dest.contains('gl1') ||
+        routeStr.contains('grayline 1')) {
       return _grayline1Route;
-    } else if (_selectedContainer.id == 'CONT-003') {
+    } else if (_selectedContainer.id == 'CONT-003' ||
+        dest.contains('grayline 2') ||
+        dest.contains('gl2') ||
+        routeStr.contains('grayline 2')) {
       return _grayline2Route;
     }
     return _orugodawattaRoute;
@@ -1613,7 +1889,9 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   @override
   void initState() {
     super.initState();
-    _selectedContainer = widget.container ?? ContainerModel.sampleContainers.first;
+    final currentUser = ApiService.instance.currentUser;
+    final ownerContainers = ContainerModel.sampleContainers.where((c) => c.ownerEmail.toLowerCase() == currentUser.email.toLowerCase()).toList();
+    _selectedContainer = widget.container ?? (ownerContainers.isNotEmpty ? ownerContainers.first : ContainerModel.sampleContainers.first);
   }
 
   @override
@@ -1631,18 +1909,26 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   }
 
   void _showCheckpointsSheet() {
-    final String yardName = _selectedContainer.id == 'CONT-002'
+    final settings = AppSettingsController.instance;
+    final isDark = settings.isDarkMode;
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final textCol = isDark ? Colors.white : AppColors.textDark;
+
+    final dest = _selectedContainer.destination.toLowerCase();
+    final String yardName = (dest.contains('grayline 1') || dest.contains('gl1'))
         ? 'Grayline 1 (GL1) Yard'
-        : (_selectedContainer.id == 'CONT-003' ? 'Grayline 2 (GL2) Yard' : 'Orugodawatta Yard (RCT)');
+        : ((dest.contains('grayline 2') || dest.contains('gl2'))
+            ? 'Grayline 2 (GL2) Yard'
+            : 'Orugodawatta Yard (RCT)');
 
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         padding: const EdgeInsets.all(22),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1653,7 +1939,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: AppColors.borderLight,
+                  color: isDark ? const Color(0xFF334155) : AppColors.borderLight,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -1669,7 +1955,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                     style: GoogleFonts.poppins(
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
-                      color: AppColors.textDark,
+                      color: textCol,
                     ),
                   ),
                 ),
@@ -1683,12 +1969,14 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                 status: 'Passed',
                 isPassed: true,
                 isFirst: true,
+                isDark: isDark,
               ),
               _buildCheckpointItem(
                 title: 'Kochchikade Terminal Corridor',
                 time: '08:20 AM - e-Seal RFID Check',
                 status: 'Passed',
                 isPassed: true,
+                isDark: isDark,
               ),
               _buildCheckpointItem(
                 title: 'Prince of Wales Avenue',
@@ -1696,6 +1984,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                 status: 'Active',
                 isPassed: false,
                 isActive: true,
+                isDark: isDark,
               ),
               _buildCheckpointItem(
                 title: 'Grayline 1 (GL1) Examination Depot',
@@ -1703,6 +1992,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                 status: 'Scheduled',
                 isPassed: false,
                 isLast: true,
+                isDark: isDark,
               ),
             ] else if (_selectedContainer.id == 'CONT-003') ...[
               _buildCheckpointItem(
@@ -1711,18 +2001,21 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                 status: 'Passed',
                 isPassed: true,
                 isFirst: true,
+                isDark: isDark,
               ),
               _buildCheckpointItem(
                 title: 'Aluthmawatha Corridor',
                 time: '01:35 PM - RFID Scanned',
                 status: 'Passed',
                 isPassed: true,
+                isDark: isDark,
               ),
               _buildCheckpointItem(
                 title: 'Peliyagoda Kelani Bridge Gate',
                 time: '01:50 PM - Transit Verified',
                 status: 'Passed',
                 isPassed: true,
+                isDark: isDark,
               ),
               _buildCheckpointItem(
                 title: 'Grayline 2 (GL2) Yard Peliyagoda',
@@ -1730,6 +2023,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                 status: 'Arrived',
                 isPassed: true,
                 isLast: true,
+                isDark: isDark,
               ),
             ] else ...[
               _buildCheckpointItem(
@@ -1738,12 +2032,14 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                 status: 'Passed',
                 isPassed: true,
                 isFirst: true,
+                isDark: isDark,
               ),
               _buildCheckpointItem(
                 title: 'Ingurukade Junction Terminal',
                 time: '07:38 AM - RFID e-Seal Verified',
                 status: 'Passed',
                 isPassed: true,
+                isDark: isDark,
               ),
               _buildCheckpointItem(
                 title: 'Peliyagoda / Baseline Corridor',
@@ -1751,6 +2047,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                 status: 'Active',
                 isPassed: false,
                 isActive: true,
+                isDark: isDark,
               ),
               _buildCheckpointItem(
                 title: 'Orugodawatta Examination Yard (RCT)',
@@ -1758,6 +2055,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                 status: 'Scheduled',
                 isPassed: false,
                 isLast: true,
+                isDark: isDark,
               ),
             ],
             const SizedBox(height: 12),
@@ -1775,16 +2073,17 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
     bool isActive = false,
     bool isFirst = false,
     bool isLast = false,
+    bool isDark = false,
   }) {
     final Color badgeBg = isPassed
         ? AppColors.successLight
-        : (isActive ? AppColors.warningLight : const Color(0xFFF1F5F9));
+        : (isActive ? AppColors.warningLight : (isDark ? const Color(0xFF334155) : const Color(0xFFF1F5F9)));
     final Color badgeText = isPassed
         ? AppColors.successGreen
-        : (isActive ? AppColors.warningOrange : AppColors.textMuted);
+        : (isActive ? AppColors.warningOrange : (isDark ? const Color(0xFF94A3B8) : AppColors.textMuted));
     final Color dotColor = isPassed
         ? AppColors.successGreen
-        : (isActive ? AppColors.primaryBlue : const Color(0xFFCBD5E1));
+        : (isActive ? AppColors.primaryBlue : (isDark ? const Color(0xFF475569) : const Color(0xFFCBD5E1)));
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1797,14 +2096,14 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
               decoration: BoxDecoration(
                 color: dotColor,
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 2),
+                border: Border.all(color: isDark ? const Color(0xFF1E293B) : Colors.white, width: 2),
               ),
             ),
             if (!isLast)
               Container(
                 width: 2,
                 height: 38,
-                color: isPassed ? AppColors.successGreen : const Color(0xFFE2E8F0),
+                color: isPassed ? AppColors.successGreen : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
               ),
           ],
         ),
@@ -1818,14 +2117,14 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                 style: GoogleFonts.poppins(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.textDark,
+                  color: isDark ? Colors.white : AppColors.textDark,
                 ),
               ),
               Text(
                 time,
                 style: GoogleFonts.poppins(
                   fontSize: 11,
-                  color: AppColors.textMuted,
+                  color: isDark ? const Color(0xFF94A3B8) : AppColors.textMuted,
                 ),
               ),
             ],
@@ -1852,418 +2151,532 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final containers = ContainerModel.sampleContainers;
+    final settings = AppSettingsController.instance;
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.textDark),
-          onPressed: () {
-            if (Navigator.of(context).canPop()) {
-              Navigator.of(context).pop();
+    return ListenableBuilder(
+      listenable: settings,
+      builder: (context, _) {
+        final isDark = settings.isDarkMode;
+        final bgColor = isDark ? const Color(0xFF0F172A) : Colors.white;
+        final cardColor = isDark ? const Color(0xFF1E293B) : Colors.white;
+        final textColor = isDark ? Colors.white : AppColors.textDark;
+        final borderColor = isDark ? const Color(0xFF334155) : AppColors.borderLight;
+
+        final currentUser = ApiService.instance.currentUser;
+        return StreamBuilder<List<ContainerModel>>(
+          stream: FirebaseService.instance.getContainersStream(
+            ownerEmail: currentUser.email,
+            company: currentUser.company,
+          ),
+          initialData: ContainerModel.sampleContainers.where((c) => c.ownerEmail.toLowerCase() == currentUser.email.toLowerCase()).toList().isNotEmpty
+              ? ContainerModel.sampleContainers.where((c) => c.ownerEmail.toLowerCase() == currentUser.email.toLowerCase()).toList()
+              : ContainerModel.sampleContainers,
+          builder: (context, snapshot) {
+            final containers = (snapshot.data != null && snapshot.data!.isNotEmpty)
+                ? snapshot.data!
+                : ContainerModel.sampleContainers;
+
+            if (!containers.any((c) => c.id == _selectedContainer.id)) {
+              _selectedContainer = containers.first;
             }
-          },
-        ),
-        title: Text(
-          'Live Tracking',
-          style: GoogleFonts.poppins(
-            fontSize: 17,
-            fontWeight: FontWeight.bold,
-            color: AppColors.primaryBlue,
-          ),
-        ),
-        actions: [
-          // Toggle Real Map / Mockup Map
-          IconButton(
-            icon: Icon(
-              _useRealMap ? Icons.map_outlined : Icons.layers_outlined,
-              color: AppColors.primaryBlue,
+
+            return Scaffold(
+              backgroundColor: bgColor,
+              appBar: AppBar(
+            backgroundColor: cardColor,
+            elevation: 0,
+            leading: IconButton(
+              icon: Icon(Icons.arrow_back, color: textColor),
+              onPressed: () {
+                if (Navigator.of(context).canPop()) {
+                  Navigator.of(context).pop();
+                }
+              },
             ),
-            tooltip: _useRealMap ? 'Switch to Mockup Map' : 'Switch to Real Map',
-            onPressed: () {
-              setState(() {
-                _useRealMap = !_useRealMap;
-              });
-            },
+            title: Text(
+              settings.tr('live_tracking'),
+              style: GoogleFonts.poppins(
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+                color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
+              ),
+            ),
+            actions: [
+              // Toggle Real Map / Mockup Map
+              IconButton(
+                icon: Icon(
+                  _useRealMap ? Icons.map_outlined : Icons.layers_outlined,
+                  color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
+                ),
+                tooltip: _useRealMap ? 'Switch to Mockup Map' : 'Switch to Real Map',
+                onPressed: () {
+                  setState(() {
+                    _useRealMap = !_useRealMap;
+                  });
+                },
+              ),
+              // Waypoints list action
+              IconButton(
+                icon: Icon(Icons.alt_route, color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue),
+                tooltip: 'View Checkpoints',
+                onPressed: _showCheckpointsSheet,
+              ),
+              // Recenter view
+              IconButton(
+                icon: Icon(Icons.my_location, color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue),
+                tooltip: 'Recenter Map',
+                onPressed: () {
+                  if (_useRealMap) {
+                    try {
+                      _mapController.move(_currentVehicleLocation, 14.0);
+                    } catch (_) {}
+                  } else {
+                    _transformController.value = Matrix4.identity();
+                  }
+                },
+              ),
+            ],
+            centerTitle: false,
           ),
-          // Waypoints list action
-          IconButton(
-            icon: const Icon(Icons.alt_route, color: AppColors.primaryBlue),
-            tooltip: 'View Checkpoints',
-            onPressed: _showCheckpointsSheet,
-          ),
-          // Recenter view
-          IconButton(
-            icon: const Icon(Icons.my_location, color: AppColors.primaryBlue),
-            tooltip: 'Recenter Map',
-            onPressed: () {
-              if (_useRealMap) {
-                try {
-                  _mapController.move(_currentVehicleLocation, 14.0);
-                } catch (_) {}
-              } else {
-                _transformController.value = Matrix4.identity();
-              }
-            },
-          ),
-        ],
-        centerTitle: false,
-      ),
-      body: Stack(
-        children: [
-          // 1. Map View (Real OpenStreetMap or Mockup Image)
-          Positioned.fill(
-            child: _useRealMap
-                ? FlutterMap(
-                    mapController: _mapController,
-                    options: const MapOptions(
-                      initialCenter: LatLng(6.9450, 79.8650),
-                      initialZoom: 13.5,
-                      minZoom: 10.0,
-                      maxZoom: 18.0,
-                    ),
-                    children: [
-                      // OpenStreetMap live vector tiles
-                      TileLayer(
-                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'com.securetrack.sl',
-                      ),
-                      // Transit Corridor Route Polyline (Option 2: Modern, Sleek, Subtle)
-                      PolylineLayer(
-                        polylines: [
-                          Polyline(
-                            points: _currentRoute,
-                            strokeWidth: 3.5,
-                            color: const Color(0xFF2563EB).withValues(alpha: 0.85),
+          body: Stack(
+            children: [
+              // 1. Map View (Real OpenStreetMap or Mockup Image)
+              Positioned.fill(
+                child: _useRealMap
+                    ? FlutterMap(
+                        mapController: _mapController,
+                        options: const MapOptions(
+                          initialCenter: LatLng(6.9450, 79.8650),
+                          initialZoom: 13.5,
+                          minZoom: 10.0,
+                          maxZoom: 18.0,
+                        ),
+                        children: [
+                          // Vector tiles (OpenStreetMap with Dark Matrix shader for Night Radar Theme)
+                          TileLayer(
+                            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            userAgentPackageName: 'com.securetrack.sl',
+                            tileBuilder: (context, tileWidget, tile) {
+                              if (isDark) {
+                                return ColorFiltered(
+                                  colorFilter: const ColorFilter.matrix(<double>[
+                                    -0.85, 0, 0, 0, 215,
+                                    0, -0.85, 0, 0, 220,
+                                    0, 0, -0.75, 0, 240,
+                                    0, 0, 0, 1, 0,
+                                  ]),
+                                  child: tileWidget,
+                                );
+                              }
+                              return tileWidget;
+                            },
                           ),
-                        ],
-                      ),
-                      // Real Markers Layer
-                      MarkerLayer(
-                        markers: [
-                          // 1. Start Port Marker
-                          Marker(
-                            point: _currentRoute.first,
-                            width: 44,
-                            height: 44,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: AppColors.primaryBlue,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 2),
-                                boxShadow: const [
-                                  BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2)),
-                                ],
+                          // Transit Corridor Route Polyline
+                          PolylineLayer(
+                            polylines: [
+                              Polyline(
+                                points: _currentRoute,
+                                strokeWidth: 3.5,
+                                color: isDark
+                                    ? const Color(0xFF60A5FA)
+                                    : const Color(0xFF2563EB).withValues(alpha: 0.85),
                               ),
-                              child: const Icon(Icons.directions_boat, color: Colors.white, size: 22),
-                            ),
+                            ],
                           ),
-                          // 2. Destination Marker (Customs Examination Yard)
-                          Marker(
-                            point: _currentRoute.last,
-                            width: 44,
-                            height: 44,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: AppColors.dangerRed,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 2),
-                                boxShadow: const [
-                                  BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2)),
-                                ],
-                              ),
-                              child: const Icon(Icons.location_on, color: Colors.white, size: 24),
-                            ),
-                          ),
-                          // 3. Live Animated Vehicle Marker
-                          Marker(
-                            point: _currentVehicleLocation,
-                            width: 52,
-                            height: 52,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: AppColors.successGreen,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 2.5),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppColors.successGreen.withValues(alpha: 0.5),
-                                    blurRadius: 12,
-                                    spreadRadius: 3,
+                          // Real Markers Layer
+                          MarkerLayer(
+                            markers: [
+                              // 1. Start Port Marker
+                              Marker(
+                                point: _currentRoute.first,
+                                width: 44,
+                                height: 44,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primaryBlue,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 2),
+                                    boxShadow: const [
+                                      BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2)),
+                                    ],
                                   ),
-                                ],
+                                  child: const Icon(Icons.directions_boat, color: Colors.white, size: 22),
+                                ),
                               ),
-                              child: const Icon(Icons.local_shipping, color: Colors.white, size: 26),
-                            ),
+                              // 2. Destination Marker (Customs Examination Yard)
+                              Marker(
+                                point: _currentRoute.last,
+                                width: 44,
+                                height: 44,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: AppColors.dangerRed,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 2),
+                                    boxShadow: const [
+                                      BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2)),
+                                    ],
+                                  ),
+                                  child: const Icon(Icons.location_on, color: Colors.white, size: 24),
+                                ),
+                              ),
+                              // 3. Live Animated Vehicle Marker
+                              Marker(
+                                point: _currentVehicleLocation,
+                                width: 52,
+                                height: 52,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: AppColors.successGreen,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 2.5),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: AppColors.successGreen.withValues(alpha: 0.5),
+                                        blurRadius: 12,
+                                        spreadRadius: 3,
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Icon(Icons.local_shipping, color: Colors.white, size: 26),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
+                      )
+                    : InteractiveViewer(
+                        transformationController: _transformController,
+                        minScale: 0.8,
+                        maxScale: 3.5,
+                        boundaryMargin: const EdgeInsets.all(80),
+                        child: Image.asset(
+                          'assets/images/colombo_map.png',
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return ColomboMapArt(
+                              progress: _routeProgress,
+                              durationText: '$_remainingMinutes min',
+                              distanceText: '${_remainingKm.toStringAsFixed(1)} km',
+                            );
+                          },
+                        ),
+                      ),
+              ),
+
+              // Top Floating Bar: Container Chips & Live Telemetry
+              Positioned(
+                top: 10,
+                left: 16,
+                right: 16,
+                child: Column(
+                  children: [
+                    // Container Selector Chips
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: containers.map((c) {
+                          final isSelected = c.id == _selectedContainer.id;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _selectedContainer = c;
+                                });
+                                if (_useRealMap) {
+                                  try {
+                                    _mapController.move(_currentVehicleLocation, 13.5);
+                                  } catch (_) {}
+                                }
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: isSelected ? AppColors.primaryBlue : cardColor,
+                                  borderRadius: BorderRadius.circular(20),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.12),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                  border: Border.all(
+                                    color: isSelected ? AppColors.primaryBlue : borderColor,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.inventory_2,
+                                      size: 14,
+                                      color: isSelected ? Colors.white : (isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      c.id,
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 12,
+                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                        color: isSelected ? Colors.white : textColor,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Telemetry Strip Card
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: cardColor.withValues(alpha: 0.95),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: borderColor),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.12),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _buildTelemetryItem(
+                            Icons.speed,
+                            settings.tr('speed'),
+                            '$_currentSpeed km/h',
+                            isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
+                            isDark,
+                          ),
+                          _buildTelemetryItem(
+                            Icons.lock,
+                            settings.tr('seal_status'),
+                            _selectedContainer.sealStatus,
+                            _selectedContainer.sealStatus.toLowerCase() == 'tampered' ? AppColors.dangerRed : AppColors.successGreen,
+                            isDark,
+                          ),
+                          _buildTelemetryItem(
+                            Icons.battery_charging_full,
+                            settings.tr('battery'),
+                            '${_selectedContainer.batteryLevel}%',
+                            _selectedContainer.batteryLevel < 50 ? AppColors.warningOrange : AppColors.successGreen,
+                            isDark,
+                          ),
+                          _buildTelemetryItem(
+                            Icons.cell_tower,
+                            'Signal',
+                            '4G LTE',
+                            AppColors.infoBlue,
+                            isDark,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Recenter GPS Button (Floating above bottom card)
+              Positioned(
+                right: 20,
+                bottom: 140,
+                child: FloatingActionButton.small(
+                  heroTag: 'recenter_btn',
+                  backgroundColor: cardColor,
+                  foregroundColor: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
+                  elevation: 4,
+                  onPressed: () {
+                    if (_useRealMap) {
+                      try {
+                        _mapController.move(_currentVehicleLocation, 14.0);
+                      } catch (_) {}
+                    } else {
+                      _transformController.value = Matrix4.identity();
+                    }
+                  },
+                  child: const Icon(Icons.my_location, size: 20),
+                ),
+              ),
+
+              // Bottom Floating Container Tracking Card
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 24,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: cardColor,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: borderColor),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.15),
+                        blurRadius: 16,
+                        offset: const Offset(0, 4),
                       ),
                     ],
-                  )
-                : InteractiveViewer(
-                    transformationController: _transformController,
-                    minScale: 0.8,
-                    maxScale: 3.5,
-                    boundaryMargin: const EdgeInsets.all(80),
-                    child: Image.asset(
-                      'assets/images/colombo_map.png',
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return ColomboMapArt(
-                          progress: _routeProgress,
-                          durationText: '$_remainingMinutes min',
-                          distanceText: '${_remainingKm.toStringAsFixed(1)} km',
-                        );
-                      },
-                    ),
                   ),
-          ),
-
-          // Top Floating Bar: Container Chips & Live Telemetry
-          Positioned(
-            top: 10,
-            left: 16,
-            right: 16,
-            child: Column(
-              children: [
-                // Container Selector Chips
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: containers.map((c) {
-                      final isSelected = c.id == _selectedContainer.id;
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _selectedContainer = c;
-                            });
-                            if (_useRealMap) {
-                              try {
-                                _mapController.move(_currentVehicleLocation, 13.5);
-                              } catch (_) {}
-                            }
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: isSelected ? AppColors.primaryBlue : Colors.white,
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.08),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 2),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                width: 10,
+                                height: 10,
+                                decoration: const BoxDecoration(
+                                  color: AppColors.successGreen,
+                                  shape: BoxShape.circle,
                                 ),
-                              ],
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                _selectedContainer.id,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
+                                ),
+                              ),
+                            ],
+                          ),
+                          StatusBadge(status: _selectedContainer.status),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: _selectedContainer.gpsStatus == 'GPS Active'
+                                  ? AppColors.infoLight
+                                  : AppColors.warningLight,
+                              borderRadius: BorderRadius.circular(6),
                               border: Border.all(
-                                color: isSelected ? AppColors.primaryBlue : AppColors.borderLight,
+                                color: _selectedContainer.gpsStatus == 'GPS Active'
+                                    ? AppColors.infoBlue.withValues(alpha: 0.3)
+                                    : AppColors.warningOrange.withValues(alpha: 0.4),
                               ),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
-                                  Icons.inventory_2,
-                                  size: 14,
-                                  color: isSelected ? Colors.white : AppColors.primaryBlue,
+                                  _selectedContainer.gpsStatus == 'GPS Active'
+                                      ? Icons.satellite_alt_rounded
+                                      : Icons.warning_amber_rounded,
+                                  size: 12,
+                                  color: _selectedContainer.gpsStatus == 'GPS Active'
+                                      ? AppColors.infoBlue
+                                      : AppColors.warningOrange,
                                 ),
-                                const SizedBox(width: 6),
+                                const SizedBox(width: 4),
                                 Text(
-                                  c.id,
+                                  _selectedContainer.gpsStatus,
                                   style: GoogleFonts.poppins(
-                                    fontSize: 12,
-                                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                                    color: isSelected ? Colors.white : AppColors.textDark,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: _selectedContainer.gpsStatus == 'GPS Active'
+                                        ? AppColors.infoBlue
+                                        : AppColors.warningOrange,
                                   ),
                                 ),
                               ],
                             ),
                           ),
+                          const SizedBox(width: 8),
+                          if (_selectedContainer.batteryLevel < 50)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: AppColors.warningLight,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                'Low Battery (<50%)',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.warningOrange,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Route: ${_selectedContainer.route}',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: textColor,
                         ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-                const SizedBox(height: 8),
-
-                // Telemetry Strip Card
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.95),
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
                       ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _buildTelemetryItem(
-                        Icons.speed,
-                        'Speed',
-                        '$_currentSpeed km/h',
-                        AppColors.primaryBlue,
-                      ),
-                      _buildTelemetryItem(
-                        Icons.lock,
-                        'e-Seal',
-                        _selectedContainer.sealStatus,
-                        AppColors.successGreen,
-                      ),
-                      _buildTelemetryItem(
-                        Icons.battery_charging_full,
-                        'Battery',
-                        '${_selectedContainer.batteryLevel}%',
-                        AppColors.successGreen,
-                      ),
-                      _buildTelemetryItem(
-                        Icons.cell_tower,
-                        'Signal',
-                        '4G LTE',
-                        AppColors.infoBlue,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Recenter GPS Button (Floating above bottom card)
-          Positioned(
-            right: 20,
-            bottom: 140,
-            child: FloatingActionButton.small(
-              heroTag: 'recenter_btn',
-              backgroundColor: Colors.white,
-              foregroundColor: AppColors.primaryBlue,
-              elevation: 4,
-              onPressed: () {
-                if (_useRealMap) {
-                  try {
-                    _mapController.move(_currentVehicleLocation, 14.0);
-                  } catch (_) {}
-                } else {
-                  _transformController.value = Matrix4.identity();
-                }
-              },
-              child: const Icon(Icons.my_location, size: 20),
-            ),
-          ),
-
-          // Bottom Floating Container Tracking Card
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: 24,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.10),
-                    blurRadius: 16,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
+                      const SizedBox(height: 4),
                       Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Container(
-                            width: 10,
-                            height: 10,
-                            decoration: const BoxDecoration(
-                              color: AppColors.successGreen,
-                              shape: BoxShape.circle,
+                          Text(
+                            'ETA: $_remainingMinutes mins (${_remainingKm.toStringAsFixed(1)} km left)',
+                            style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? const Color(0xFF93C5FD) : AppColors.primaryBlue,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Text(
-                            _selectedContainer.id,
-                            style: GoogleFonts.poppins(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.primaryBlue,
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.of(context).pushNamed(
+                                '/container-details',
+                                arguments: _selectedContainer,
+                              );
+                            },
+                            child: Row(
+                              children: [
+                                Text(
+                                  settings.tr('view_details'),
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
+                                  ),
+                                ),
+                                Icon(Icons.chevron_right, size: 16, color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue),
+                              ],
                             ),
                           ),
                         ],
                       ),
-                      StatusBadge(status: _selectedContainer.status),
                     ],
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Route: ${_selectedContainer.route}',
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textDark,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'ETA: $_remainingMinutes mins (${_remainingKm.toStringAsFixed(1)} km left)',
-                        style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.primaryBlue,
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.of(context).pushNamed(
-                            '/container-details',
-                            arguments: _selectedContainer,
-                          );
-                        },
-                        child: Row(
-                          children: [
-                            Text(
-                              'Details',
-                              style: GoogleFonts.poppins(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.primaryBlue,
-                              ),
-                            ),
-                            const Icon(Icons.chevron_right, size: 16, color: AppColors.primaryBlue),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
+    );
+      },
     );
   }
 
-  Widget _buildTelemetryItem(IconData icon, String label, String value, Color color) {
+  Widget _buildTelemetryItem(IconData icon, String label, String value, Color color, [bool isDark = false]) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -2274,14 +2687,14 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
           style: GoogleFonts.poppins(
             fontSize: 11,
             fontWeight: FontWeight.bold,
-            color: AppColors.textDark,
+            color: isDark ? Colors.white : AppColors.textDark,
           ),
         ),
         Text(
           label,
           style: GoogleFonts.poppins(
             fontSize: 9,
-            color: AppColors.textMuted,
+            color: isDark ? const Color(0xFF94A3B8) : AppColors.textMuted,
           ),
         ),
       ],
@@ -2302,132 +2715,292 @@ class AlertsScreen extends StatefulWidget {
 class _AlertsScreenState extends State<AlertsScreen> {
   String _selectedCategory = 'All';
 
-  final List<String> _categories = ['All', 'Security', 'Location', 'Bettery'];
+  final List<String> _categories = ['All', 'Security', 'Location', 'Battery'];
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Top Title with Bell Icon
-              Row(
+    final settings = AppSettingsController.instance;
+
+    return ListenableBuilder(
+      listenable: settings,
+      builder: (context, _) {
+        final isDark = settings.isDarkMode;
+        final bgColor = isDark ? const Color(0xFF0F172A) : AppColors.background;
+        final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFF1F5F9);
+
+        return Scaffold(
+          backgroundColor: bgColor,
+          body: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(
-                    Icons.notifications_active_outlined,
-                    color: AppColors.primaryBlue,
-                    size: 26,
+                  // Top Title with Bell Icon & Export Report Action
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.notifications_active_outlined,
+                            color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
+                            size: 26,
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            settings.tr('alerts'),
+                            style: GoogleFonts.poppins(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.white : AppColors.primaryBlue,
+                            ),
+                          ),
+                        ],
+                      ),
+                      InkWell(
+                        onTap: () {
+                          showDialog(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                              title: Row(
+                                children: [
+                                  const Icon(Icons.picture_as_pdf_rounded, color: AppColors.primaryBlue, size: 24),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Security Audit Report',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: isDark ? Colors.white : AppColors.textDark,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              content: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Sri Lanka Customs Compliance Audit Log',
+                                    style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primaryBlue),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    '• Export Format: Official Security Incident Log (PDF)\n• Importer: ${ApiService.instance.currentUser.company}\n• Verified By: Electronic Cargo Tracking System (ECTS)\n• Date Range: Active Transit Corridor Trips',
+                                    style: GoogleFonts.poppins(fontSize: 12, color: isDark ? const Color(0xFF94A3B8) : AppColors.textMedium, height: 1.4),
+                                  ),
+                                ],
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx),
+                                  child: const Text('Close'),
+                                ),
+                                ElevatedButton.icon(
+                                  onPressed: () {
+                                    Navigator.pop(ctx);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Security Incident Audit Report (PDF) downloaded successfully!'),
+                                        backgroundColor: AppColors.successGreen,
+                                      ),
+                                    );
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primaryBlue,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                  icon: const Icon(Icons.download, size: 16, color: Colors.white),
+                                  label: const Text('Download PDF', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF334155) : const Color(0xFFE0EDFB),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: isDark ? const Color(0xFF475569) : AppColors.primaryBlue.withValues(alpha: 0.2)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.description_outlined, size: 14, color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Audit Report',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  Text(
-                    'Alerts',
-                    style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primaryBlue,
+                  const SizedBox(height: 18),
+
+                  // Filter Category Chips: All, Security, Location, Battery
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: _categories.map((category) {
+                        final bool isSelected = _selectedCategory == category;
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 10),
+                          child: GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _selectedCategory = category;
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? AppColors.primaryBlue
+                                    : (isDark ? const Color(0xFF1E293B) : const Color(0xFFE0EDFB)),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? AppColors.primaryBlue
+                                      : (isDark ? const Color(0xFF334155) : Colors.transparent),
+                                ),
+                              ),
+                              child: Text(
+                                category,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                  color: isSelected
+                                      ? Colors.white
+                                      : (isDark ? const Color(0xFF94A3B8) : AppColors.primaryBlue),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Alerts List
+                  Expanded(
+                    child: StreamBuilder<List<AlertItem>>(
+                      stream: FirebaseService.instance.getAlertsStream(
+                        category: _selectedCategory,
+                        ownerEmail: ApiService.instance.currentUser.email,
+                      ),
+                      initialData: AlertItem.sampleAlerts.where((alert) {
+                        final matchesCat = (_selectedCategory == 'All' || alert.category.toLowerCase() == _selectedCategory.toLowerCase());
+                        final matchesOwner = alert.ownerEmail.toLowerCase() == ApiService.instance.currentUser.email.toLowerCase();
+                        return matchesCat && matchesOwner;
+                      }).toList(),
+                      builder: (context, snapshot) {
+                        final currentUserEmail = ApiService.instance.currentUser.email.trim().toLowerCase();
+                        
+                        // 1. Get from stream if available and non-empty
+                        List<AlertItem> alerts = [];
+                        if (snapshot.hasData && snapshot.data != null && snapshot.data!.isNotEmpty) {
+                          alerts = snapshot.data!;
+                        } else {
+                          // 2. Fallback to sampleAlerts
+                          alerts = AlertItem.sampleAlerts.where((alert) {
+                            final matchesCat = (_selectedCategory == 'All' || alert.category.toLowerCase() == _selectedCategory.toLowerCase());
+                            final matchesOwner = currentUserEmail.isEmpty || 
+                                                 alert.ownerEmail.toLowerCase() == currentUserEmail ||
+                                                 alert.ownerEmail.toLowerCase() == 'owner@cargooverseas.lk';
+                            return matchesCat && matchesOwner;
+                          }).toList();
+                        }
+
+                        // 3. Guaranteed safety fallback: If still empty, show all alerts for this owner
+                        if (alerts.isEmpty) {
+                          alerts = AlertItem.sampleAlerts.where((alert) {
+                            return alert.ownerEmail.toLowerCase() == currentUserEmail ||
+                                   alert.ownerEmail.toLowerCase() == 'owner@cargooverseas.lk';
+                          }).toList();
+                        }
+
+                        if (alerts.isEmpty) {
+                          return Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24.0),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.notifications_off_outlined, size: 48, color: isDark ? const Color(0xFF64748B) : AppColors.textLight),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'No alerts in $_selectedCategory',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                      color: isDark ? const Color(0xFF94A3B8) : AppColors.textMuted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+                        return ListView.separated(
+                          itemCount: alerts.length,
+                          separatorBuilder: (context, index) => Divider(
+                            color: borderColor,
+                            height: 1,
+                          ),
+                          itemBuilder: (context, index) {
+                            final alert = alerts[index];
+                            return AlertItemCard(
+                              alert: alert,
+                              onTap: () {
+                                final matchedContainer = ContainerModel.sampleContainers.firstWhere(
+                                  (c) => c.id == alert.containerId,
+                                  orElse: () => ContainerModel.sampleContainers.first,
+                                );
+                                _showAlertDetails(context, alert, matchedContainer, isDark);
+                              },
+                            );
+                          },
+                        );
+                      },
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 18),
-
-              // Filter Category Chips: All, Security, Location, Bettery
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: _categories.map((category) {
-                    final bool isSelected = _selectedCategory == category;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 10),
-                      child: GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _selectedCategory = category;
-                          });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
-                          decoration: BoxDecoration(
-                            color: isSelected ? AppColors.primaryBlue : const Color(0xFFE0EDFB),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Text(
-                            category,
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                              color: isSelected ? Colors.white : AppColors.primaryBlue,
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // Alerts List
-              Expanded(
-                child: StreamBuilder<List<AlertItem>>(
-                  stream: FirebaseService.instance.getAlertsStream(category: _selectedCategory),
-                  initialData: AlertItem.sampleAlerts.where((alert) {
-                    if (_selectedCategory == 'All') return true;
-                    return alert.category.toLowerCase() == _selectedCategory.toLowerCase();
-                  }).toList(),
-                  builder: (context, snapshot) {
-                    final alerts = snapshot.data ?? [];
-                    if (alerts.isEmpty) {
-                      return Center(
-                        child: Text(
-                          'No alerts in $_selectedCategory',
-                          style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textMuted),
-                        ),
-                      );
-                    }
-                    return ListView.separated(
-                      itemCount: alerts.length,
-                      separatorBuilder: (context, index) => const Divider(
-                        color: Color(0xFFF1F5F9),
-                        height: 1,
-                      ),
-                      itemBuilder: (context, index) {
-                        final alert = alerts[index];
-                        return AlertItemCard(
-                          alert: alert,
-                          onTap: () {
-                            final matchedContainer = ContainerModel.sampleContainers.firstWhere(
-                              (c) => c.id == alert.containerId,
-                              orElse: () => ContainerModel.sampleContainers.first,
-                            );
-                            _showAlertDetails(context, alert, matchedContainer);
-                          },
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
-  void _showAlertDetails(BuildContext context, AlertItem alert, ContainerModel container) {
+  void _showAlertDetails(BuildContext context, AlertItem alert, ContainerModel container, [bool isDark = false]) {
+    final settings = AppSettingsController.instance;
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final textCol = isDark ? Colors.white : AppColors.textDark;
+    final mutedCol = isDark ? const Color(0xFF94A3B8) : AppColors.textMuted;
+    final innerBg = isDark ? const Color(0xFF0F172A) : AppColors.background;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         padding: const EdgeInsets.all(22),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2438,7 +3011,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: AppColors.borderLight,
+                  color: isDark ? const Color(0xFF334155) : AppColors.borderLight,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -2449,7 +3022,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: alert.bgColor,
+                    color: isDark ? alert.bgColor.withValues(alpha: 0.25) : alert.bgColor,
                     shape: BoxShape.circle,
                   ),
                   child: Icon(alert.icon, color: alert.iconColor, size: 24),
@@ -2464,14 +3037,14 @@ class _AlertsScreenState extends State<AlertsScreen> {
                         style: GoogleFonts.poppins(
                           fontSize: 15,
                           fontWeight: FontWeight.bold,
-                          color: AppColors.textDark,
+                          color: textCol,
                         ),
                       ),
                       Text(
                         'Container ${alert.containerId} • ${alert.timestamp}',
                         style: GoogleFonts.poppins(
                           fontSize: 11,
-                          color: AppColors.textMuted,
+                          color: mutedCol,
                         ),
                       ),
                     ],
@@ -2484,14 +3057,15 @@ class _AlertsScreenState extends State<AlertsScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: AppColors.background,
+                color: innerBg,
                 borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: isDark ? const Color(0xFF334155) : Colors.transparent),
               ),
               child: Text(
                 'High-priority security telemetry verified by Sri Lanka Customs gateway. Container is actively being tracked.',
                 style: GoogleFonts.poppins(
                   fontSize: 12,
-                  color: AppColors.textMedium,
+                  color: isDark ? const Color(0xFFE2E8F0) : AppColors.textMedium,
                   height: 1.35,
                 ),
               ),
@@ -2509,13 +3083,17 @@ class _AlertsScreenState extends State<AlertsScreen> {
                       );
                     },
                     style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: AppColors.primaryBlue),
+                      side: BorderSide(color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                     child: Text(
-                      'View on Map',
-                      style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primaryBlue),
+                      settings.tr('track_on_map'),
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
+                      ),
                     ),
                   ),
                 ),
@@ -2535,7 +3113,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                     child: Text(
-                      'Details',
+                      settings.tr('view_details'),
                       style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
                     ),
                   ),
@@ -2559,149 +3137,252 @@ class ProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentUser = ApiService.instance.currentUser;
+    final settings = AppSettingsController.instance;
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Top User Header Banner (Blue card with profile icon)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryBlue,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Column(
-                  children: [
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.20),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                      ),
-                      child: const Center(
-                        child: Icon(Icons.person, size: 38, color: Colors.white),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      currentUser.name,
-                      style: GoogleFonts.poppins(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${currentUser.role} • ${currentUser.company}',
-                      style: GoogleFonts.poppins(
-                        fontSize: 11,
-                        color: Colors.white70,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
+    return ListenableBuilder(
+      listenable: settings,
+      builder: (context, _) {
+        final isDark = settings.isDarkMode;
+        final bgColor = isDark ? const Color(0xFF0F172A) : AppColors.background;
+        final cardColor = isDark ? const Color(0xFF1E293B) : Colors.white;
+        final textColor = isDark ? Colors.white : AppColors.textDark;
+        final textMuted = isDark ? const Color(0xFF94A3B8) : AppColors.textMuted;
+        final borderColor = isDark ? const Color(0xFF334155) : AppColors.borderLight;
 
-              // User Account Information Section
-              Text(
-                'User Information',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textDark,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.borderLight),
-                ),
-                child: Column(
-                  children: [
-                    _buildCompanyRow(Icons.person_outline, 'Full Name', currentUser.name),
-                    const Divider(height: 20),
-                    _buildCompanyRow(Icons.email_outlined, 'Email Address', currentUser.email),
-                    const Divider(height: 20),
-                    _buildCompanyRow(Icons.phone_outlined, 'Phone Number', currentUser.phone),
-                    const Divider(height: 20),
-                    _buildCompanyRow(Icons.badge_outlined, 'Registered Role', currentUser.role),
-                    const Divider(height: 20),
-                    _buildCompanyRow(Icons.business_outlined, 'Affiliated Company', currentUser.company),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Account Statistics Section
-              Text(
-                'Account Statistics',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textDark,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Row(
+        return Scaffold(
+          backgroundColor: bgColor,
+          body: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildStatCard('12', 'Active', const Color(0xFFD4EEDF), const Color(0xFF166534)),
-                  const SizedBox(width: 12),
-                  _buildStatCard('48', 'Delivered', const Color(0xFFD4EEDF), const Color(0xFF166534)),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  _buildStatCard('60', 'Total', const Color(0xFFD6E6F9), const Color(0xFF1E40AF)),
-                  const SizedBox(width: 12),
-                  _buildStatCard('2', 'Alerts', const Color(0xFFFEE2E2), const Color(0xFF991B1B)),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              // Sign Out Button
-              OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).pushReplacementNamed('/role-selection');
-                },
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(50),
-                  side: const BorderSide(color: AppColors.dangerRed),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                icon: const Icon(Icons.logout, color: AppColors.dangerRed),
-                label: Text(
-                  'Sign Out',
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.dangerRed,
+                  // Top User Header Banner (Blue card with profile icon)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryBlue,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 64,
+                          height: 64,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.20),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                          child: const Center(
+                            child: Icon(Icons.person, size: 38, color: Colors.white),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          currentUser.name,
+                          style: GoogleFonts.poppins(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${currentUser.role} • ${currentUser.company}',
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            color: Colors.white70,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 20),
+
+                  // User Account Information Section
+                  Text(
+                    settings.tr('company_info'),
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: textColor,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: cardColor,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: borderColor),
+                    ),
+                    child: Column(
+                      children: [
+                        _buildCompanyRow(Icons.person_outline, 'Full Name', currentUser.name, isDark),
+                        Divider(height: 20, color: borderColor),
+                        _buildCompanyRow(Icons.email_outlined, 'Email Address', currentUser.email, isDark),
+                        Divider(height: 20, color: borderColor),
+                        _buildCompanyRow(Icons.phone_outlined, 'Phone Number', currentUser.phone, isDark),
+                        Divider(height: 20, color: borderColor),
+                        _buildCompanyRow(Icons.badge_outlined, 'Registered Role', currentUser.role, isDark),
+                        Divider(height: 20, color: borderColor),
+                        _buildCompanyRow(Icons.business_outlined, 'Affiliated Company', currentUser.company, isDark),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // App Preferences & Settings Section
+                  Text(
+                    settings.tr('settings'),
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: textColor,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: cardColor,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: borderColor),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Theme switch row
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                                  color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  settings.tr('theme_mode'),
+                                  style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: textColor),
+                                ),
+                              ],
+                            ),
+                            Switch.adaptive(
+                              value: isDark,
+                              activeColor: AppColors.accentBlue,
+                              onChanged: (_) => settings.toggleTheme(),
+                            ),
+                          ],
+                        ),
+                        Divider(height: 16, color: borderColor),
+                        // Language selector
+                        Text(
+                          settings.tr('select_language'),
+                          style: GoogleFonts.poppins(fontSize: 12, color: textMuted, fontWeight: FontWeight.w500),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: AppLanguage.values.map((lang) {
+                            final isSel = settings.language == lang;
+                            return Expanded(
+                              child: GestureDetector(
+                                onTap: () => settings.setLanguage(lang),
+                                child: Container(
+                                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: isSel
+                                        ? AppColors.primaryBlue
+                                        : (isDark ? const Color(0xFF334155) : const Color(0xFFF1F5F9)),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: isSel ? AppColors.primaryBlue : borderColor,
+                                    ),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Text(lang.flag, style: const TextStyle(fontSize: 16)),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        lang.label,
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 11,
+                                          fontWeight: isSel ? FontWeight.bold : FontWeight.w500,
+                                          color: isSel ? Colors.white : textColor,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                        const SizedBox(height: 14),
+                        // More Settings Button
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).pushNamed('/settings');
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: isDark ? const Color(0xFF334155) : const Color(0xFFE0EDFB),
+                            foregroundColor: isDark ? Colors.white : AppColors.primaryBlue,
+                            elevation: 0,
+                            minimumSize: const Size.fromHeight(44),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          icon: const Icon(Icons.tune_rounded, size: 18),
+                          label: Text(
+                            'All Settings (Alarms, Hotline & Security)',
+                            style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Sign Out Button
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      await SessionManager.instance.clearSession();
+                      if (context.mounted) {
+                        Navigator.of(context).pushNamedAndRemoveUntil('/role-selection', (route) => false);
+                      }
+                    },
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(50),
+                      side: const BorderSide(color: AppColors.dangerRed),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    icon: const Icon(Icons.logout, color: AppColors.dangerRed),
+                    label: Text(
+                      settings.tr('sign_out'),
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.dangerRed,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
               ),
-              const SizedBox(height: 16),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildCompanyRow(IconData icon, String label, String value) {
+  Widget _buildCompanyRow(IconData icon, String label, String value, [bool isDark = false]) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2713,7 +3394,10 @@ class ProfileScreen extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textMuted),
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  color: isDark ? const Color(0xFF94A3B8) : AppColors.textMuted,
+                ),
               ),
               const SizedBox(height: 1),
               Text(
@@ -2721,46 +3405,13 @@ class ProfileScreen extends StatelessWidget {
                 style: GoogleFonts.poppins(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.textDark,
+                  color: isDark ? Colors.white : AppColors.textDark,
                 ),
               ),
             ],
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildStatCard(String value, String label, Color bg, Color textCol) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Column(
-          children: [
-            Text(
-              value,
-              style: GoogleFonts.poppins(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: textCol,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: textCol,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

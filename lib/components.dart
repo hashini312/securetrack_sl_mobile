@@ -49,7 +49,7 @@ class AppLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final assetPath = isBw ? 'assets/images/logo_bw.png' : 'assets/images/logo_color.png';
+    final assetPath = isBw ? 'assets/images/logo_bw.png' : 'assets/images/logo.png';
 
     return Image.asset(
       assetPath,
@@ -58,7 +58,7 @@ class AppLogo extends StatelessWidget {
       fit: BoxFit.contain,
       errorBuilder: (context, error, stackTrace) {
         return Image.asset(
-          'assets/images/logo.png',
+          'assets/images/logo_color.png',
           width: size,
           height: size,
           fit: BoxFit.contain,
@@ -225,6 +225,8 @@ class ContainerItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
@@ -232,9 +234,12 @@ class ContainerItemCard extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isDark ? const Color(0xFF1E293B) : Colors.white,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.borderLight, width: 1),
+          border: Border.all(
+            color: isDark ? const Color(0xFF334155) : AppColors.borderLight,
+            width: 1,
+          ),
         ),
         child: Row(
           children: [
@@ -274,7 +279,7 @@ class ContainerItemCard extends StatelessWidget {
                     style: GoogleFonts.poppins(
                       fontSize: 13,
                       fontWeight: FontWeight.bold,
-                      color: AppColors.textDark,
+                      color: isDark ? Colors.white : AppColors.textDark,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -284,7 +289,7 @@ class ContainerItemCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.poppins(
                       fontSize: 10,
-                      color: AppColors.textMuted,
+                      color: isDark ? const Color(0xFF94A3B8) : AppColors.textMuted,
                     ),
                   ),
                 ],
@@ -313,6 +318,8 @@ class AlertItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -324,7 +331,7 @@ class AlertItemCard extends StatelessWidget {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: alert.bgColor,
+                color: isDark ? alert.bgColor.withValues(alpha: 0.25) : alert.bgColor,
                 shape: BoxShape.circle,
               ),
               child: Center(
@@ -346,7 +353,7 @@ class AlertItemCard extends StatelessWidget {
                     style: GoogleFonts.poppins(
                       fontSize: 13,
                       fontWeight: FontWeight.bold,
-                      color: AppColors.primaryBlue,
+                      color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -355,7 +362,7 @@ class AlertItemCard extends StatelessWidget {
                     style: GoogleFonts.poppins(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.textMedium,
+                      color: isDark ? Colors.white : AppColors.textMedium,
                     ),
                   ),
                   const SizedBox(height: 1),
@@ -363,16 +370,16 @@ class AlertItemCard extends StatelessWidget {
                     alert.timestamp,
                     style: GoogleFonts.poppins(
                       fontSize: 10,
-                      color: AppColors.textLight,
+                      color: isDark ? const Color(0xFF94A3B8) : AppColors.textLight,
                     ),
                   ),
                 ],
               ),
             ),
             // Chevron arrow
-            const Icon(
+            Icon(
               Icons.chevron_right,
-              color: AppColors.primaryBlue,
+              color: isDark ? const Color(0xFF60A5FA) : AppColors.primaryBlue,
               size: 20,
             ),
           ],

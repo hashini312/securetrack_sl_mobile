@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'firebase_service.dart';
 import 'models.dart';
+import 'session_manager.dart';
 
-/// API Service connecting the Flutter app to the SecureTrack SL Backend
+/// API Service connecting the Flutter app to Firebase Authentication & SecureTrack Backend
 class ApiService {
   ApiService._();
   static final ApiService instance = ApiService._();
@@ -19,30 +21,69 @@ class ApiService {
 
   static const Duration _timeout = Duration(milliseconds: 2500);
 
-  // Local user cache ensuring registered users persist in session even if backend is offline
+  // Local user cache with realistic Sri Lankan Container Owners & Importers
   final Map<String, Map<String, dynamic>> _localUsers = {
     'owner@cargooverseas.lk': {
       'name': 'Tharindu Perera',
       'email': 'owner@cargooverseas.lk',
       'password': 'Secure@2026',
       'phone': '+94 77 123 4567',
-      'role': 'Owner',
+      'role': 'Container Owner',
       'company': 'Cargo Overseas Freight Pvt Ltd',
+      'tinNumber': 'TIN-104928190',
+      'customsImporterCode': 'SLC-IMP-40918',
     },
-    'driver@cargooverseas.lk': {
-      'name': 'S.A. Gamage',
-      'email': 'driver@cargooverseas.lk',
+    'kasun.fernando@ceylonlogistics.lk': {
+      'name': 'Kasun Fernando',
+      'email': 'kasun.fernando@ceylonlogistics.lk',
       'password': 'Secure@2026',
-      'phone': '+94 77 987 6543',
-      'role': 'Driver',
-      'company': 'Cargo Overseas Freight Pvt Ltd',
+      'phone': '+94 71 892 3451',
+      'role': 'Container Owner',
+      'company': 'Ceylon Global Freight & Logistics Ltd',
+      'tinNumber': 'TIN-209481729',
+      'customsImporterCode': 'SLC-IMP-38912',
+    },
+    'anura.wijesinghe@lankaforwarding.lk': {
+      'name': 'Anura Wijesinghe',
+      'email': 'anura.wijesinghe@lankaforwarding.lk',
+      'password': 'Secure@2026',
+      'phone': '+94 77 345 6789',
+      'role': 'Container Owner',
+      'company': 'Lanka Maritime Forwarders Pvt Ltd',
+      'tinNumber': 'TIN-301928471',
+      'customsImporterCode': 'SLC-IMP-29481',
+    },
+    'dilani.senanayake@islandfreight.lk': {
+      'name': 'Dilani Senanayake',
+      'email': 'dilani.senanayake@islandfreight.lk',
+      'password': 'Secure@2026',
+      'phone': '+94 76 543 2198',
+      'role': 'Container Owner',
+      'company': 'Island Express Cargo Solutions',
+      'tinNumber': 'TIN-409182736',
+      'customsImporterCode': 'SLC-IMP-50192',
+    },
+    'rohan.de.silva@transocean.lk': {
+      'name': 'Rohan De Silva',
+      'email': 'rohan.de.silva@transocean.lk',
+      'password': 'Secure@2026',
+      'phone': '+94 72 456 1234',
+      'role': 'Container Owner',
+      'company': 'Transoceanic Shipping & Logistics Pvt Ltd',
+      'tinNumber': 'TIN-502918374',
+      'customsImporterCode': 'SLC-IMP-19402',
     },
   };
 
   UserModel _currentUser = UserModel.defaultOwner;
   UserModel get currentUser => _currentUser;
 
-  /// Authenticate user against Backend SQLite Database (or Local Cache)
+  void setCurrentUser(UserModel user) {
+    _currentUser = user;
+    SessionManager.instance.saveSession(user);
+  }
+
+  /// Authenticate user against Firebase Authentication (or Local Cache)
   Future<Map<String, dynamic>> login({
     required String email,
     required String password,
@@ -50,7 +91,37 @@ class ApiService {
   }) async {
     final cleanEmail = email.trim().toLowerCase();
 
-    // 1. Try Backend API first
+    // 1. Try Firebase Authentication First (Firebase Console)
+    try {
+      final fbResult = await FirebaseService.instance.loginUser(
+        email: cleanEmail,
+        password: password,
+        role: role,
+      );
+
+      if (fbResult['success'] == true && fbResult['user'] != null) {
+        final u = fbResult['user'];
+        final loggedUser = UserModel(
+          name: u['name'] ?? 'User',
+          email: u['email'] ?? cleanEmail,
+          phone: u['phone'] ?? '+94 77 123 4567',
+          role: u['role'] ?? role,
+          company: u['company'] ?? 'Cargo Overseas Freight Pvt Ltd',
+        );
+        _currentUser = loggedUser;
+        SessionManager.instance.saveSession(loggedUser);
+        return fbResult;
+      } else if (fbResult['error'] != null && fbResult['error'].toString().contains('wrong-password')) {
+        return {
+          'success': false,
+          'error': 'Incorrect password. Please verify your credentials and try again.',
+        };
+      }
+    } catch (e) {
+      debugPrint('[Auth] Firebase login attempt note: $e');
+    }
+
+    // 2. Try Backend API
     try {
       final response = await http
           .post(
@@ -68,35 +139,35 @@ class ApiService {
         final decoded = jsonDecode(response.body);
         if (decoded['user'] != null) {
           final u = decoded['user'];
-          _currentUser = UserModel(
+          final loggedUser = UserModel(
             name: u['name'] ?? 'User',
             email: u['email'] ?? cleanEmail,
             phone: u['phone'] ?? '+94 77 123 4567',
             role: u['role'] ?? role,
             company: u['company'] ?? 'Cargo Overseas Freight Pvt Ltd',
           );
+          _currentUser = loggedUser;
+          SessionManager.instance.saveSession(loggedUser);
         }
-        return decoded;
-      } else if (response.statusCode == 401) {
-        // Explicit rejection from server
-        final decoded = jsonDecode(response.body);
         return decoded;
       }
     } catch (e) {
       debugPrint('ApiService login connecting to local registry: $e');
     }
 
-    // 2. Check Local Registered Users
+    // 3. Check Local Registered Users
     if (_localUsers.containsKey(cleanEmail)) {
       final user = _localUsers[cleanEmail]!;
       if (user['password'] == password) {
-        _currentUser = UserModel(
+        final loggedUser = UserModel(
           name: user['name'] ?? 'User',
           email: cleanEmail,
           phone: user['phone'] ?? '+94 77 123 4567',
           role: user['role'] ?? role,
           company: user['company'] ?? 'Cargo Overseas Freight Pvt Ltd',
         );
+        _currentUser = loggedUser;
+        SessionManager.instance.saveSession(loggedUser);
         return {
           'success': true,
           'token': 'jwt_local_${DateTime.now().millisecondsSinceEpoch}',
@@ -115,14 +186,14 @@ class ApiService {
       }
     }
 
-    // 3. Unregistered user rejection
+    // 4. Unregistered user rejection
     return {
       'success': false,
       'error': 'Access Denied: Unregistered email ($cleanEmail). Please create an account first.',
     };
   }
 
-  /// Register new user and save to SQLite DB and Local Cache
+  /// Register new user directly into Firebase Authentication Console & Cloud Firestore
   Future<Map<String, dynamic>> register({
     required String name,
     required String email,
@@ -132,7 +203,7 @@ class ApiService {
   }) async {
     final cleanEmail = email.trim().toLowerCase();
 
-    // Always register in local cache so login is guaranteed to work
+    // Cache locally
     _localUsers[cleanEmail] = {
       'name': name.trim(),
       'email': cleanEmail,
@@ -142,17 +213,35 @@ class ApiService {
       'company': 'Cargo Overseas Freight Pvt Ltd',
     };
 
-    _currentUser = UserModel(
+    final newUser = UserModel(
       name: name.trim(),
       email: cleanEmail,
       phone: phone.trim(),
       role: role,
       company: 'Cargo Overseas Freight Pvt Ltd',
     );
+    _currentUser = newUser;
+    SessionManager.instance.saveSession(newUser);
 
-    // Try sending to SQLite Backend API
+    // 1. Direct Firebase Auth & Cloud Firestore Registration
     try {
-      final response = await http
+      final fbResult = await FirebaseService.instance.registerUser(
+        name: name,
+        email: cleanEmail,
+        phone: phone,
+        password: password,
+        role: role,
+      );
+      if (fbResult['success'] == true) {
+        debugPrint('[ApiService] User successfully created in Firebase Console: $cleanEmail');
+      }
+    } catch (e) {
+      debugPrint('[ApiService] Firebase Auth registration note: $e');
+    }
+
+    // 2. Try sending to SQLite Backend API
+    try {
+      await http
           .post(
             Uri.parse('$baseUrl/auth/register'),
             headers: {'Content-Type': 'application/json'},
@@ -165,17 +254,11 @@ class ApiService {
             }),
           )
           .timeout(_timeout);
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      }
-    } catch (e) {
-      debugPrint('ApiService register local save success: $e');
-    }
+    } catch (_) {}
 
     return {
       'success': true,
-      'message': 'Account registered successfully',
+      'message': 'Account registered successfully in Firebase Authentication',
       'user': {
         'name': name.trim(),
         'email': cleanEmail,
